@@ -132,6 +132,8 @@ static double curFrameTime;
 static double lastFrameTime;
 static double nextFrameTime;
 static int numVBlanksSinceFlip;
+// Vblanks left of the command line's fast-forward after boot or reset (--fast-forward-for-frames).
+static int launchFastForwardVblanks;
 // Host timestamp of the last flip we let through, for the fast-forward flip limiter in
 // __DisplayFlip. Up here with the rest of them so a boot resets it - as a static inside the
 // function it kept a timestamp from whatever ran before, and the first flip of a new game was
@@ -212,6 +214,11 @@ void __DisplayInit() {
 	height = 272;
 	numSkippedFrames = 0;
 	numVBlanksSinceFlip = 0;
+	// Every boot and reset starts the command line's fast-forward again.
+	launchFastForwardVblanks = g_Config.launchFastForwardFrames;
+	if (launchFastForwardVblanks > 0) {
+		PSP_CoreParameter().fastForward = true;
+	}
 	flippedThisFrame = false;
 	framebufIsLatched = false;
 	framebuf.topaddr = 0x04000000;
@@ -615,6 +622,10 @@ void hleEnterVblank(u64 userdata, int cyclesLate) {
 	g_controlMapper.UpdateAutoMovements(CoreTiming::GetGlobalTimeUs() / 1000000.0);
 
 	numVBlanksSinceFlip++;
+
+	if (launchFastForwardVblanks > 0 && --launchFastForwardVblanks == 0) {
+		PSP_CoreParameter().fastForward = false;
+	}
 
 	// TODO: Should this be done here or in hleLeaveVblank?
 	if (framebufIsLatched) {

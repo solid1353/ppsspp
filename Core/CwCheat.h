@@ -66,6 +66,11 @@ public:
 	}
 	void Run();
 	bool HasCheats();
+	// Whether the last ParseCheats() read the game's cheat file, which it does only while
+	// cheats are on for the game. Command-line cheats are always read.
+	bool FileCheatsIncluded() const {
+		return fileCheatsIncluded_;
+	}
 	// Replaces the parsed cheats, for tests.
 	void SetCheats(const std::vector<CheatCode> &cheats) {
 		cheats_ = cheats;
@@ -95,14 +100,18 @@ private:
 	std::vector<CheatCode> cheats_;
 	std::string gameID_;
 	Path filename_;
+	bool fileCheatsIncluded_ = false;
 };
 
 class CheatFileParser {
 public:
+	// An empty filename gives a parser for ParseText() only.
 	CheatFileParser(const Path &filename, std::string_view gameID = "");
 	~CheatFileParser();
 
 	bool Parse();
+	// Parses CwCheat text instead of the file, the same way.
+	bool ParseText(std::string_view text);
 
 	const std::vector<std::string> &GetErrors() const { return errors_; }
 	const std::vector<CheatCode> &GetCheats() const { return cheats_; }
@@ -112,6 +121,7 @@ protected:
 	void Flush();
 	void FlushCheatInfo();
 	void AddError(const std::string &msg, int lineNumber);
+	void ParseTextLine(const char *rawLine, int lineNumber);
 	void ParseLine(const std::string &line, int lineNumber);
 	void ParseDataLine(const std::string &line, int lineNumber, CheatCodeFormat format);
 	bool ValidateGameID(std::string_view gameID);

@@ -15,6 +15,8 @@
 // Official git repository and contact information can be found at
 // https://github.com/hrydgard/ppsspp and http://www.ppsspp.org/.
 
+#include <cstring>
+
 #include "Common/System/System.h"
 #include "Core/Config.h"
 #include "Core/HW/StereoResampler.h"  // TODO: doesn't belong in Core/HW...
@@ -42,6 +44,10 @@ void NativeMix(int16_t *outStereo, int numFrames, int sampleRateHz, void *userda
 		g_resampler.Mix(outStereo, numFrames, false, sampleRateHz);
 	}
 	g_BackgroundAudio.SFX().Mix(outStereo, numFrames, sampleRateHz);
+	if (g_Config.launchMute) {
+		// After mixing, so the game's audio timing stays as it would be.
+		memset(outStereo, 0, sizeof(int16_t) * 2 * numFrames);
+	}
 }
 
 void System_AudioGetDebugStats(char *buf, size_t bufSize) {

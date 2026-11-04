@@ -3680,6 +3680,40 @@ bool TestCmdLine() {
 			EXPECT_EQ_INT((int)options.Parse(ARRAY_SIZE(argv), argv, CmdLineMode::Headless), (int)CommandLineParseResult::Error);
 		}
 	}
+	// Launch options: cheat files and lines keep their command-line order, and the window,
+	// fast-forward and mute options parse.
+	{
+		const Path cheatFile = UnitTestTempPath("unittest_launch_cheats.ini");
+		EXPECT_TRUE(File::WriteStringToFile(true, "_C1 From file\n_L 0x20002004 0x00000002", cheatFile));
+		const std::string cheatsArg = "--cheats=" + cheatFile.ToString();
+		const char *argv[] = {
+			"ppsspp",
+			"--cheat-line=_L 0x20002000 0x00000001",
+			cheatsArg.c_str(),
+			"--cheat-line=_L 0x20002008 0x00000003",
+			"--fast-forward-for-frames=600",
+			"--mute",
+			"--window=10,-20,640,480",
+		};
+		CommandLineOptions options;
+		EXPECT_EQ_INT((int)options.Parse(ARRAY_SIZE(argv), argv, CmdLineMode::Application), (int)CommandLineParseResult::Continue);
+		File::Delete(cheatFile);
+		EXPECT_EQ_STR(options.launchCheats, std::string("_L 0x20002000 0x00000001\n_C1 From file\n_L 0x20002004 0x00000002\n_L 0x20002008 0x00000003\n"));
+		EXPECT_EQ_INT(options.fastForwardForFrames.value_or(0), 600);
+		EXPECT_TRUE(options.mute.value_or(false));
+		EXPECT_TRUE(options.window.has_value());
+		const std::array<int, 4> window = options.window.value_or(std::array<int, 4>{});
+		EXPECT_EQ_INT(window[1], -20);
+		EXPECT_EQ_INT(window[3], 480);
+	}
+	{
+		const char *bad[] = { "--window=1,2,3", "--window=0,0,640,10", "--window=0,0,640,480x", "--fast-forward-for-frames=0", "--cheats=unittest_missing_cheats.ini" };
+		for (const char *arg : bad) {
+			const char *argv[] = { "ppsspp", arg };
+			CommandLineOptions options;
+			EXPECT_EQ_INT((int)options.Parse(ARRAY_SIZE(argv), argv, CmdLineMode::Application), (int)CommandLineParseResult::Error);
+		}
+	}
 	// Test GL version override
 	{
 		const char *argv[] = {

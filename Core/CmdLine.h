@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -87,6 +88,16 @@ struct CommandLineOptions {
 	std::optional<std::string> memStick;
 	std::optional<std::string> stateToLoad;
 	std::optional<std::string> stateToSave;
+
+	// CwCheat text for this run from --cheats=FILE and --cheat-line=LINE, in command-line order.
+	// ApplyToConfig() hands it to Config::launchCheats.
+	std::string launchCheats;
+	// Fast-forward this many vblanks after boot and after every reset.
+	std::optional<int> fastForwardForFrames;
+	// Silence game and UI audio for this run.
+	std::optional<bool> mute;
+	// The window's position and size for this run: x, y, width, height. Not saved.
+	std::optional<std::array<int, 4>> window;
 
 	// Headless: unpack the firmware inside an official updater EBOOT.PBP (given as the boot
 	// filename) into this directory, then exit without booting anything.

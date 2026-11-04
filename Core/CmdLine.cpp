@@ -226,6 +226,8 @@ static const CommandLineParam g_autoParams[] = {
 	{POFF(nand), CmdParamType::String, "nand", '\0', "Root NAND directory, one level above flash0 (default: the memstick's PSP/NAND)"},
 	{POFF(stateToLoad), CmdParamType::String, "state", '\0', "Load state from specified file"},
 	{POFF(stateToSave), CmdParamType::String, "save-state", '\0', "Save a state to FILE partway through the run", CmdLineMode::Headless},
+	{POFF(fastForwardForFrames), CmdParamType::Int, "fast-forward-for-frames", '\0', "Fast-forward this many frames (vblanks) after boot and after every reset", CmdLineMode::Application},
+	{POFF(mute), CmdParamType::Bool, "mute", '\0', "Silence game and UI audio for this run", CmdLineMode::Application},
 	{POFF(compare), CmdParamType::Bool, "compare", 'c', "Enable comparison mode", CmdLineMode::Headless},
 	{POFF(bench), CmdParamType::Bool, "bench", 'b', "Enable benchmark mode", CmdLineMode::Headless},
 	{POFF(oldAtrac), CmdParamType::Bool, "old-atrac", '\0', "Use old ATRAC decoder"},
@@ -385,6 +387,11 @@ int CommandLineOptions::PrintUsage(const char *progname, const char *situationTe
 	if (mode == CmdLineMode::Headless) {
 		PRINT_STDOUT("  --ignore TESTNAME     ignore the specified test (may be repeated)\n");
 	}
+	PRINT_STDOUT("  --cheats=FILE         apply the CwCheat FILE for this run, even with cheats off (may be repeated)\n");
+	PRINT_STDOUT("  --cheat-line=LINE     apply one CwCheat line for this run (may be repeated, in order with --cheats)\n");
+	if (mode == CmdLineMode::Application) {
+		PRINT_STDOUT("  --window=X,Y,W,H      place the window for this run without saving it\n");
+	}
 
 	PRINT_STDOUT("  --graphics=BACKEND    use a different gpu backend\n");
 	PRINT_STDOUT("                        options: gles, software, etc. (also opengl3.1, etc.)\n");
@@ -404,6 +411,9 @@ CommandLineParseResult CommandLineOptions::Parse(int argc, const char *argv[], C
 	constexpr std::string_view configOption = "--config=";
 	constexpr std::string_view controlsOption = "--controlconfig=";
 	constexpr std::string_view logLevelOption = "--loglevel=";
+	constexpr std::string_view cheatsOption = "--cheats=";
+	constexpr std::string_view cheatLineOption = "--cheat-line=";
+	constexpr std::string_view windowOption = "--window=";
 
 	// The rest is handled in NativeInit().
 	// NOTE: We don't increment i here, as we'll sometimes handle options that read the next argument.
@@ -545,6 +555,28 @@ CommandLineParseResult CommandLineOptions::Parse(int argc, const char *argv[], C
 			controlsConfigFilename = std::string(argv[i] + controlsOption.size());
 		} else if (startsWith(argv[i], logLevelOption)) {
 			logLevel = static_cast<LogLevel>(atoi(argv[i] + logLevelOption.size()));
+		} else if (startsWith(argv[i], cheatsOption)) {
+			// Can be repeated; the files and --cheat-line lines apply in command-line order.
+			std::string text;
+			if (!File::ReadTextFileToString(Path(std::string(argv[i] + cheatsOption.size())), &text)) {
+				PRINT_STDERR("Error: can't read the cheat file in %s\n", argv[i]);
+				return CommandLineParseResult::Error;
+			}
+			launchCheats += text;
+			if (!text.empty() && text.back() != '\n') {
+				launchCheats += '\n';
+			}
+		} else if (startsWith(argv[i], cheatLineOption)) {
+			launchCheats.append(argv[i] + cheatLineOption.size());
+			launchCheats += '\n';
+		} else if (startsWith(argv[i], windowOption) && mode == CmdLineMode::Application) {
+			int x = 0, y = 0, width = 0, height = 0;
+			char trailing = 0;
+			if (sscanf(argv[i] + windowOption.size(), "%d,%d,%d,%d%c", &x, &y, &width, &height, &trailing) != 4 || width < 20 || height < 20) {
+				PRINT_STDERR("Error: %s needs X,Y,WIDTH,HEIGHT, with WIDTH and HEIGHT at least 20.\n", argv[i]);
+				return CommandLineParseResult::Error;
+			}
+			window = std::array<int, 4>{x, y, width, height};
 		} else if (equals(argv[i], "--ignore")) {
 			// Headless: skip a specific test. Can be repeated, so not a regular auto-param.
 			if (i + 1 < argc) {
@@ -563,6 +595,11 @@ CommandLineParseResult CommandLineOptions::Parse(int argc, const char *argv[], C
 		i++;
 	}
 
+	if (fastForwardForFrames.has_value() && fastForwardForFrames.value() <= 0) {
+		PRINT_STDERR("Error: --fast-forward-for-frames needs a positive frame count.\n");
+		return CommandLineParseResult::Error;
+	}
+
 	if (debuggerPort.has_value() && debuggerRunPort.has_value()) {
 		PRINT_STDERR("Error: --debugger and --debugger-run can't be used together.\n");
 		return CommandLineParseResult::Error;
@@ -578,6 +615,22 @@ CommandLineParseResult CommandLineOptions::Parse(int argc, const char *argv[], C
 }
 
 void CommandLineOptions::ApplyToConfig() const {
+	// Run-only fields: Config never reads these from or saves them to the ini.
+	g_Config.launchCheats = launchCheats;
+	g_Config.launchFastForwardFrames = fastForwardForFrames.value_or(0);
+	g_Config.launchMute = mute.value_or(false);
+	if (window.has_value()) {
+		const auto &[x, y, width, height] = window.value();
+		g_Config.iWindowX = x;
+		g_Config.iWindowY = y;
+		g_Config.iWindowWidth = width;
+		g_Config.iWindowHeight = height;
+		g_Config.iWindowSizeState = (int)WindowSizeState::Normal;
+		for (void *setting : {(void *)&g_Config.iWindowX, (void *)&g_Config.iWindowY, (void *)&g_Config.iWindowWidth,
+				(void *)&g_Config.iWindowHeight, (void *)&g_Config.iWindowSizeState}) {
+			g_Config.DoNotSaveSetting(setting);
+		}
+	}
 	if (adhocServer.has_value()) {
 		g_Config.bEnableAdhocServer = adhocServer.value();
 		g_Config.DoNotSaveSetting(&g_Config.bEnableAdhocServer);

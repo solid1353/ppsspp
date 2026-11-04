@@ -770,6 +770,16 @@ public:
 
 	Path mountRoot;  // Actually, mount as host0. keeping consistent with headless args.
 
+	// Set from the command line for this run only, never read from or saved to the ini, so a
+	// per-game config can't override them either.
+	// CwCheat text from --cheats and --cheat-line, applied after the game's own cheat file even
+	// when cheats are off for the game.
+	std::string launchCheats;
+	// Vblanks to fast-forward through after every boot and reset (--fast-forward-for-frames).
+	int launchFastForwardFrames = 0;
+	// Silences game and UI audio (--mute).
+	bool launchMute = false;
+
 	// Data for upgrade prompt
 	std::string sUpgradeMessage;  // The actual message from the server is currently not used, need a translation mechanism. So this just acts as a flag.
 	std::string sUpgradeVersion;

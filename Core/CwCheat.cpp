@@ -51,7 +51,10 @@ static inline std::string TrimString(std::string_view s) {
 }
 
 CheatFileParser::CheatFileParser(const Path &filename, std::string_view gameID) {
-	fp_ = File::OpenCFile(filename, "rt");
+	// No file for a parser that only gets ParseText().
+	if (!filename.empty()) {
+		fp_ = File::OpenCFile(filename, "rt");
+	}
 	validGameID_ = ReplaceAll(gameID, "-", "");
 }
 
@@ -67,28 +70,48 @@ bool CheatFileParser::Parse() {
 		char *tempLine = fgets(temp, sizeof(temp), fp_);
 		if (!tempLine)
 			continue;
-
-		// Cheats copied from websites can carry invisible characters (like direction marks) that would
-		// break the hex values. This also drops the UTF-8 BOM.
-		std::string line = TrimString(SanitizeString(tempLine, StringRestriction::NoInvisibleFormatting));
-
-		// Minimum length 5 is shortest possible _ lines name of the game "_G N+"
-		// and a minimum of 1 displayable character in cheat name string "_C0 1"
-		// which both equal to 5 characters.
-		if (line.length() >= 5 && line[0] == '_') {
-			ParseLine(line, lineNumber);
-		} else if (line.length() >= 2 && line[0] == '/' && line[1] == '/') {
-			// Comment, ignore.
-		} else if (line.length() >= 1 && line[0] == '#') {
-			// Comment, ignore.
-		} else if (line.length() > 0) {
-			errors_.push_back(StringFromFormat("Unrecognized content on line %d: expecting _", lineNumber));
-		}
+		ParseTextLine(tempLine, lineNumber);
 	}
 
 	Flush();
 
 	return errors_.empty();
+}
+
+bool CheatFileParser::ParseText(std::string_view text) {
+	int lineNumber = 1;
+	while (!text.empty()) {
+		const size_t end = text.find('\n');
+		const std::string line(text.substr(0, end));
+		ParseTextLine(line.c_str(), lineNumber++);
+		if (end == std::string_view::npos) {
+			break;
+		}
+		text.remove_prefix(end + 1);
+	}
+
+	Flush();
+
+	return errors_.empty();
+}
+
+void CheatFileParser::ParseTextLine(const char *rawLine, int lineNumber) {
+	// Cheats copied from websites can carry invisible characters (like direction marks) that would
+	// break the hex values. This also drops the UTF-8 BOM.
+	std::string line = TrimString(SanitizeString(rawLine, StringRestriction::NoInvisibleFormatting));
+
+	// Minimum length 5 is shortest possible _ lines name of the game "_G N+"
+	// and a minimum of 1 displayable character in cheat name string "_C0 1"
+	// which both equal to 5 characters.
+	if (line.length() >= 5 && line[0] == '_') {
+		ParseLine(line, lineNumber);
+	} else if (line.length() >= 2 && line[0] == '/' && line[1] == '/') {
+		// Comment, ignore.
+	} else if (line.length() >= 1 && line[0] == '#') {
+		// Comment, ignore.
+	} else if (line.length() > 0) {
+		errors_.push_back(StringFromFormat("Unrecognized content on line %d: expecting _", lineNumber));
+	}
 }
 
 void CheatFileParser::Flush() {
@@ -231,7 +254,7 @@ static void __CheatStart() {
 	cheatEngine = new CWCheatEngine(g_paramSFO.GetDiscID());
 	// This only generates ini files on boot, let's leave homebrew ini file for UI.
 	std::string realGameID = g_paramSFO.GetValueString("DISC_ID");
-	if (!realGameID.empty()) {
+	if (!realGameID.empty() && g_Config.bEnableCheats) {
 		cheatEngine->CreateCheatFile();
 	}
 
@@ -248,11 +271,16 @@ static int GetRefreshMs() {
 	return refresh;
 }
 
+// Cheats run while they're on for the game, or while the command line gave some.
+static bool CheatsWanted() {
+	return g_Config.bEnableCheats || !g_Config.launchCheats.empty();
+}
+
 void __CheatInit() {
 	// Always register the event, want savestates to be compatible whether cheats on or off.
 	CheatEvent = CoreTiming::RegisterEvent("CheatEvent", &hleCheat);
 
-	if (g_Config.bEnableCheats) {
+	if (CheatsWanted()) {
 		__CheatStart();
 	}
 
@@ -293,7 +321,7 @@ void __CheatDoState(PointerWrap &p) {
 }
 
 void hleCheat(u64 userdata, int cyclesLate) {
-	bool shouldBeEnabled = !Achievements::HardcoreModeActive() && g_Config.bEnableCheats;
+	bool shouldBeEnabled = !Achievements::HardcoreModeActive() && CheatsWanted();
 
 	if (cheatsEnabled != shouldBeEnabled) {
 		// Okay, let's move to the desired state, then.
@@ -311,7 +339,9 @@ void hleCheat(u64 userdata, int cyclesLate) {
 		return;
 	}
 
-	if (g_Config.bReloadCheats) {  // Checks if the "reload cheats" button has been pressed.
+	// The "reload cheats" button, or cheats turned on or off for the game while command-line
+	// cheats keep the engine running.
+	if (g_Config.bReloadCheats || cheatEngine->FileCheatsIncluded() != g_Config.bEnableCheats) {
 		cheatEngine->ParseCheats();
 		g_Config.bReloadCheats = false;
 	}
@@ -339,15 +369,30 @@ void CWCheatEngine::CreateCheatFile() {
 }
 
 void CWCheatEngine::ParseCheats() {
-	CheatFileParser parser(filename_, gameID_);
+	cheats_.clear();
 
-	parser.Parse();
-	// TODO: Report errors in a user-visible way.
-	for (auto &error : parser.GetErrors()) {
-		ERROR_LOG(Log::System, "CwCheat error: %s", error.c_str());
+	fileCheatsIncluded_ = g_Config.bEnableCheats;
+	if (fileCheatsIncluded_) {
+		CheatFileParser parser(filename_, gameID_);
+		parser.Parse();
+		// TODO: Report errors in a user-visible way.
+		for (auto &error : parser.GetErrors()) {
+			ERROR_LOG(Log::System, "CwCheat error: %s", error.c_str());
+		}
+		cheats_ = parser.GetCheats();
 	}
 
-	cheats_ = parser.GetCheats();
+	if (!g_Config.launchCheats.empty()) {
+		// After the file, so they win where both write. Lines before any _C line form one
+		// enabled cheat.
+		CheatFileParser parser(Path(), gameID_);
+		parser.ParseText("_C1 Command line\n" + g_Config.launchCheats);
+		for (auto &error : parser.GetErrors()) {
+			ERROR_LOG(Log::System, "Command-line CwCheat error: %s", error.c_str());
+		}
+		const std::vector<CheatCode> &launchCheats = parser.GetCheats();
+		cheats_.insert(cheats_.end(), launchCheats.begin(), launchCheats.end());
+	}
 }
 
 std::vector<CheatFileInfo> CWCheatEngine::FileInfo(std::vector<std::string> *errors) const {

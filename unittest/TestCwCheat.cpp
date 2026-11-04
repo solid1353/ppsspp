@@ -22,6 +22,7 @@
 #include "Common/File/FileUtil.h"
 #include "Common/File/Path.h"
 #include "Common/StringUtils.h"
+#include "Core/Config.h"
 #include "Core/CwCheat.h"
 #include "Core/MemMap.h"
 #include "Core/MemMapHelpers.h"
@@ -246,6 +247,35 @@ static bool TestCheatInvisibleCharacters() {
 	return true;
 }
 
+// Command-line cheats (--cheats, --cheat-line) are parsed from text, and run without the game's
+// cheat file while cheats are off for the game.
+static bool TestLaunchCheats() {
+	{
+		CheatFileParser parser(Path(), "TEST00000");
+		const bool parsed = parser.ParseText("_C1 Command line\n_L 0x20002000 0x00000001\n_C0 Off\n_L 0x20002004 0x00000002\n_C1 On\n_L 0x20002008 0x00000003");
+		const std::vector<CheatCode> &cheats = parser.GetCheats();
+		EXPECT_TRUE(parsed);
+		EXPECT_EQ_INT((int)cheats.size(), 2);
+		EXPECT_EQ_HEX(cheats[0].lines[0].part1, 0x20002000);
+		EXPECT_EQ_STR(cheats[1].name, std::string("On"));
+		EXPECT_EQ_HEX(cheats[1].lines[0].part2, 0x00000003);
+	}
+
+	const bool enableCheats = g_Config.bEnableCheats;
+	const std::string launchCheats = g_Config.launchCheats;
+	g_Config.bEnableCheats = false;
+	g_Config.launchCheats = "_L 0x20002000 0x00000007\n";
+	CWCheatEngine engine("TEST00000");
+	engine.ParseCheats();
+	const bool hasCheats = engine.HasCheats();
+	const bool fileCheatsIncluded = engine.FileCheatsIncluded();
+	g_Config.bEnableCheats = enableCheats;
+	g_Config.launchCheats = launchCheats;
+	EXPECT_TRUE(hasCheats);
+	EXPECT_FALSE(fileCheatsIncluded);
+	return true;
+}
+
 bool TestCwCheat() {
 	// Other tests may leave currentMIPS pointing elsewhere; the cheat engine needs the real one.
 	currentMIPS = &mipsr4k;
@@ -254,7 +284,7 @@ bool TestCwCheat() {
 		printf("Memory::Init failed\n");
 		return false;
 	}
-	const bool success = RunCheatTests() && TestCheatParseErrors() && TestCheatInvisibleCharacters();
+	const bool success = RunCheatTests() && TestCheatParseErrors() && TestCheatInvisibleCharacters() && TestLaunchCheats();
 	Memory::Shutdown();
 	return success;
 }
