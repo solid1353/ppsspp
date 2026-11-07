@@ -21,6 +21,7 @@ namespace MainWindow
 		WM_USER_RUN_CALLBACK = WM_USER + 108,
 		WM_USER_DESTROY = WM_USER + 109,
 		WM_USER_SHOW_DISASM = WM_USER + 110,
+		WM_USER_RECENTER_WINDOW = WM_USER + 111,
 	};
 
 	enum {
@@ -78,6 +79,7 @@ namespace MainWindow
 	void ToggleDebugConsoleVisibility();
 	void SetInternalResolution(int res = -1);
 	void SetWindowSize(int zoom);
+	void RecenterWindow();
 	void RunCallbackInWndProc(void (*callback)(void *window, void *userdata), void *userdata);
 	void SetKeepScreenBright(bool keepBright);
 	void CreateGameWindow();

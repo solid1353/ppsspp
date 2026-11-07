@@ -288,6 +288,7 @@ file - this is just an index.
 | GPU buffers | `gpu.buffer.screenshot`, `gpu.buffer.renderColor/renderDepth/renderStencil`, `gpu.buffer.texture`, `gpu.buffer.clut` | `GPUBufferSubscriber.cpp` |
 | Input injection | `input.buttons.send`, `input.buttons.press`, `input.analog.send` | `InputSubscriber.cpp` |
 | Replay | `replay.begin/abort/flush/execute/status`, `replay.time.get/set` | `ReplaySubscriber.cpp` |
+| Agent control | `agent.input.set/get/release` (a complete pad state in place of real input, until released), `agent.step` (run N vblanks with an optional state for just those frames, then answer with `startFrame` and `endFrame`; a stopped CPU stops again after them), `agent.replay.status`, `agent.replay.step` (the same for a stopped replay; an error if the replay ends first), `agent.shutdown`. Agent input is refused during a replay, and a recording stores it. It's dropped when the client that set it disconnects, and on every boot. `Core/AgentInput.cpp` holds the state | `AgentSubscriber.cpp` |
 | Client config | `broadcast.config.get/set`, `client.config.get/set` | `ClientConfigSubscriber.cpp` |
 | Log channels | `log.channels.list`, `log.channel.set` - query/change a log channel's level (string: `notice`/`error`/`warning`/`info`/`debug`/`verbose`) and/or enabled state, enabling one also turns logging as a whole on, which headless has off without `--log`; the `log` event itself (the passive message stream, unaffected by this) keeps its existing numeric `level`, see `LogBroadcaster.cpp` | `LogConfigSubscriber.cpp` |
 
@@ -305,6 +306,8 @@ file - this is just an index.
   `Core/CmdLine.cpp`/`.h` (`CmdLineMode::Both`). `ApplyToConfig()` sets
   `iRemoteISOPort`/`bRemoteDebuggerOnStartup` for that run without persisting
   them to the config file.
+  - `--debugger-local` binds 127.0.0.1 only and reports nothing to
+    `report.ppsspp.org` (see "Discovery").
   - A **non-zero** `PORT` is treated as mandatory (`WebServerSetRequireExactPort()`):
     if it can't be bound, the server does *not* silently fall back to some other
     free port the way the "Local Server Port" preference does, because a client

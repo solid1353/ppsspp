@@ -45,6 +45,8 @@ void ShutdownWebServer();
 // so landing on a different one leaves it connecting to nothing (or, worse, to some other PPSSPP
 // instance that got there first). Set this to make the bind failure fatal instead.
 void WebServerSetRequireExactPort(bool require);
+// Keeps the server on this machine: it binds 127.0.0.1 and isn't reported to report.ppsspp.org.
+void WebServerSetLoopbackOnly(bool only);
 
 // Blocks until the server thread has either started listening or given up, and returns whether
 // it's actually listening. Only meaningful right after StartWebServer().

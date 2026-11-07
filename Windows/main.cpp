@@ -680,6 +680,9 @@ bool System_MakeRequest(SystemRequestType type, int requestId, const std::string
 		PostMessage(MainWindow::GetHWND(), MainWindow::WM_USER_DESTROY, 0, 0);
 		return true;
 	}
+	case SystemRequestType::RECENTER_WINDOW:
+		PostMessage(MainWindow::GetHWND(), MainWindow::WM_USER_RECENTER_WINDOW, 0, 0);
+		return true;
 	case SystemRequestType::COPY_TO_CLIPBOARD:
 	{
 		W32Util::CopyTextToClipboard(MainWindow::GetHWND(), param1);

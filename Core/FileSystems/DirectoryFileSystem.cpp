@@ -94,6 +94,24 @@ DirectoryFileSystem::~DirectoryFileSystem() {
 	CloseAll();
 }
 
+// Maps a guest path without its leading slash into the directory --savedata gave, if it's under
+// PSP/SAVEDATA. Returns false if it isn't, or if no directory was given.
+static bool MapSavedataPath(const Path &savedataDir, std::string_view localPath, Path *result) {
+	constexpr std::string_view savedataPath = "PSP/SAVEDATA";
+	if (savedataDir.empty() || !startsWithNoCase(localPath, savedataPath)) {
+		return false;
+	}
+	std::string_view rest = localPath.substr(savedataPath.size());
+	if (!rest.empty() && rest[0] != '/') {
+		return false;
+	}
+	while (!rest.empty() && rest[0] == '/') {
+		rest = rest.substr(1);
+	}
+	*result = rest.empty() ? savedataDir : savedataDir / rest;
+	return true;
+}
+
 // TODO(scoped): Merge the two below functions somehow.
 
 Path DirectoryFileHandle::GetLocalPath(const Path &basePath, std::string_view localPath) const {
@@ -102,6 +120,11 @@ Path DirectoryFileHandle::GetLocalPath(const Path &basePath, std::string_view lo
 
 	if (localPath[0] == '/')
 		localPath = localPath.substr(1);
+
+	Path savedataPath;
+	if (MapSavedataPath(savedataDir_, localPath, &savedataPath)) {
+		return savedataPath;
+	}
 
 	if (fileSystemFlags_ & FileSystemFlags::STRIP_PSP) {
 		if (localPath == "PSP") {
@@ -120,6 +143,11 @@ Path DirectoryFileSystem::GetLocalPath(std::string_view internalPath) const {
 
 	if (internalPath[0] == '/')
 		internalPath = internalPath.substr(1);
+
+	Path savedataPath;
+	if (MapSavedataPath(savedataDir_, internalPath, &savedataPath)) {
+		return savedataPath;
+	}
 
 	if (flags & FileSystemFlags::STRIP_PSP) {
 		if (internalPath == "PSP") {
@@ -710,6 +738,7 @@ int DirectoryFileSystem::OpenFile(std::string filename, FileAccess access, const
 	ResolveShortNames(filename);
 	OpenFileEntry entry;
 	entry.hFile.fileSystemFlags_ = flags;
+	entry.hFile.savedataDir_ = savedataDir_;
 	u32 err = 0;
 	bool success = entry.hFile.Open(basePath, filename, (FileAccess)(access & FILEACCESS_PSP_FLAGS), err);
 	if (err == 0 && !success) {
@@ -1111,6 +1140,7 @@ void DirectoryFileSystem::DoState(PointerWrap &p) {
 			// A fresh one each time: Open can fail without touching the handle.
 			OpenFileEntry entry;
 			entry.hFile.fileSystemFlags_ = flags;
+			entry.hFile.savedataDir_ = savedataDir_;
 			Do(p, key);
 			Do(p, entry.guestFilename);
 			Do(p, entry.access);

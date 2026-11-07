@@ -40,6 +40,7 @@
 #include "Core/CoreTiming.h"
 #include "Core/CoreParameter.h"
 #include "Core/FrameTiming.h"
+#include "Core/InputRecording.h"
 #include "Core/Reporting.h"
 #include "Core/Core.h"
 #include "Core/System.h"
@@ -216,8 +217,11 @@ void __DisplayInit() {
 	numVBlanksSinceFlip = 0;
 	// Every boot and reset starts the command line's fast-forward again.
 	launchFastForwardVblanks = g_Config.launchFastForwardFrames;
-	if (launchFastForwardVblanks > 0) {
+	if (launchFastForwardVblanks > 0 || g_Config.launchUnlimited) {
 		PSP_CoreParameter().fastForward = true;
+	}
+	if (g_Config.launchTurbo) {
+		PSP_CoreParameter().fpsLimit = FPSLimit::CUSTOM1;
 	}
 	flippedThisFrame = false;
 	framebufIsLatched = false;
@@ -626,6 +630,8 @@ void hleEnterVblank(u64 userdata, int cyclesLate) {
 	if (launchFastForwardVblanks > 0 && --launchFastForwardVblanks == 0) {
 		PSP_CoreParameter().fastForward = false;
 	}
+
+	InputRecording::OnVblank();
 
 	// TODO: Should this be done here or in hleLeaveVblank?
 	if (framebufIsLatched) {

@@ -62,6 +62,7 @@ static WebServerFlags serverFlags;
 // See WebServerSetRequireExactPort(). Atomic because it's set from whichever thread parsed the
 // command line, and read from the server thread.
 static std::atomic<bool> serverRequireExactPort;
+static std::atomic<bool> serverLoopbackOnly;
 // Set when the server is asked to stop, so a registration in progress gives up instead of making
 // shutdown wait for its timeouts. A plain bool, since that's what the HTTP client polls.
 static bool registerCancelled;
@@ -828,6 +829,9 @@ void OpenWebDebugger() {
 
 // Called from the server thread.
 static void StartRegisterServer(int port) {
+	if (serverLoopbackOnly) {
+		return;
+	}
 	if (registerRunning) {
 		// The previous attempt is still stuck. Try again next time.
 		return;
@@ -874,6 +878,7 @@ static void WebServerThread() {
 	http->SetFallbackHandler(&HandleFallback);
 	http->RegisterHandler("/debugger", &ForwardDebuggerRequest);
 	http->RegisterHandler("/upload_file", &HandleUploadPost);
+	http->SetLoopbackOnly(serverLoopbackOnly);
 
 	if (!http->Listen(g_Config.iRemoteISOPort, "debugger-webserver")) {
 		if (serverRequireExactPort) {
@@ -1038,6 +1043,10 @@ int WebServerPort() {
 
 void WebServerSetRequireExactPort(bool require) {
 	serverRequireExactPort = require;
+}
+
+void WebServerSetLoopbackOnly(bool only) {
+	serverLoopbackOnly = only;
 }
 
 bool WebServerWaitForStartup() {

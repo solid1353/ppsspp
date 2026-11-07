@@ -57,6 +57,12 @@ namespace SaveState {
 	// Run the various actions directly.
 	void SaveSlot(std::string_view gamePrefix, int slot, Callback callback);
 	void LoadSlot(std::string_view gamePrefix, int slot, Callback callback);
+	// Records the next frame as a GE dump beside the state at statePath, unless SaveStateGEDump is off.
+	// A recording already under way wins. A load before that frame ends, or undoing or deleting the
+	// save, drops it.
+	void RecordGEDump(const Path &statePath);
+	// Loads the state the slot's last save replaced, leaving the slot as it is.
+	void LoadBackupSlot(std::string_view gamePrefix, int slot, Callback callback);
 	bool UndoSaveSlot(std::string_view gamePrefix, int slot);
 	bool UndoLastSave(std::string_view gamePrefix);
 	bool UndoLoad(std::string_view gamePrefix, Callback callback);

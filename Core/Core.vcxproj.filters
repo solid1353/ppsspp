@@ -700,6 +700,12 @@
     <ClCompile Include="Replay.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="InputRecording.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="AgentInput.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
     <ClCompile Include="WebServer.cpp">
       <Filter>Core</Filter>
     </ClCompile>
@@ -1178,6 +1184,9 @@
       <Filter>Ext\libzip</Filter>
     </ClCompile>
     <ClCompile Include="Debugger\WebSocket\ReplaySubscriber.cpp">
+      <Filter>Debugger\WebSocket</Filter>
+    </ClCompile>
+    <ClCompile Include="Debugger\WebSocket\AgentSubscriber.cpp">
       <Filter>Debugger\WebSocket</Filter>
     </ClCompile>
     <ClCompile Include="ControlMapper.cpp">
@@ -2058,6 +2067,12 @@
     <ClInclude Include="Replay.h">
       <Filter>Core</Filter>
     </ClInclude>
+    <ClInclude Include="InputRecording.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="AgentInput.h">
+      <Filter>Core</Filter>
+    </ClInclude>
     <ClInclude Include="WebServer.h">
       <Filter>Core</Filter>
     </ClInclude>
@@ -2209,6 +2224,9 @@
       <Filter>Ext\libzip</Filter>
     </ClInclude>
     <ClInclude Include="Debugger\WebSocket\ReplaySubscriber.h">
+      <Filter>Debugger\WebSocket</Filter>
+    </ClInclude>
+    <ClInclude Include="Debugger\WebSocket\AgentSubscriber.h">
       <Filter>Debugger\WebSocket</Filter>
     </ClInclude>
     <ClInclude Include="ControlMapper.h">

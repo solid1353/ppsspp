@@ -37,6 +37,7 @@
 #include "Core/MemMapHelpers.h"
 #include "Core/MIPS/MIPS.h"
 #include "Core/Replay.h"
+#include "Core/AgentInput.h"
 #include "Core/Util/AudioFormat.h"  // for clamp_u8
 
 /* Index for the two analog directions */
@@ -131,7 +132,9 @@ static void __CtrlUpdateLatch()
 	if (emuRapidFire && emuRapidFireToggle)
 		buttons &= CTRL_EMU_RAPIDFIRE_MASK;
 
+	AgentInput::Apply(buttons, ctrlCurrent.analog[CTRL_STICK_LEFT]);
 	ReplayApplyCtrl(buttons, ctrlCurrent.analog, t);
+	AgentInput::NoteSample(buttons, ctrlCurrent.analog[CTRL_STICK_LEFT]);
 
 	// Copy in the current data to the current buffer.
 	ctrlBufs[ctrlBuf] = ctrlCurrent;

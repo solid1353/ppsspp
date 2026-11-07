@@ -15,8 +15,10 @@
 // Official git repository and contact information can be found at
 // https://github.com/hrydgard/ppsspp and http://www.ppsspp.org/.
 
+#include <atomic>
 #include <cstring>
 #include <ctime>
+#include <mutex>
 #include <vector>
 
 #include "Common/CommonTypes.h"
@@ -115,6 +117,9 @@ struct ReplayItem {
 	}
 };
 
+// The CPU thread and the IO threads both add events. Recursive for the public functions that call each other.
+static std::recursive_mutex replayLock;
+
 static std::vector<ReplayItem> replayItems;
 // One more than the last executed item.
 static size_t replayExecPos = 0;
@@ -129,7 +134,12 @@ static uint8_t lastAnalog[2][2]{};
 static size_t replayDiskPos = 0;
 static bool diskFailed = false;
 
+static std::atomic<bool> replayMarkerRequested{false};
+static int replayMarkerCount = 0;
+static std::function<void(int)> replayMarkerHandler;
+
 bool ReplayExecuteBlob(int version, const std::vector<uint8_t> &data) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	if (version < REPLAY_VERSION_MIN || version > REPLAY_VERSION_CURRENT) {
 		ERROR_LOG(Log::System, "Bad replay data version: %d", version);
 		return false;
@@ -236,10 +246,17 @@ bool ReplayExecuteFile(const Path &filename) {
 }
 
 bool ReplayHasMoreEvents() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	return replayExecPos < replayItems.size();
 }
 
+uint64_t ReplayLastEventTime() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
+	return replayItems.empty() ? 0 : (uint64_t)replayItems.back().info.timestamp;
+}
+
 void ReplayBeginSave() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	if (replayState != ReplayState::EXECUTE) {
 		// Restart any save operation.
 		ReplayAbort();
@@ -252,7 +269,27 @@ void ReplayBeginSave() {
 	replayState = ReplayState::SAVE;
 }
 
+void ReplayRequestMarker() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
+	if (replayState == ReplayState::SAVE) {
+		replayMarkerRequested = true;
+	}
+}
+
+void ReplayMarkEnd(uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
+	if (replayState == ReplayState::SAVE) {
+		replayItems.push_back(ReplayItemHeader(ReplayAction::END, t, (uint64_t)0));
+	}
+}
+
+void ReplaySetMarkerHandler(std::function<void(int)> handler) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
+	replayMarkerHandler = handler;
+}
+
 void ReplayFlushBlob(std::vector<uint8_t> *data) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	size_t sz = replayItems.size() * sizeof(ReplayItemHeader);
 	// Add in any side data.
 	for (const auto &item : replayItems) {
@@ -279,6 +316,7 @@ void ReplayFlushBlob(std::vector<uint8_t> *data) {
 }
 
 bool ReplayFlushFile(const Path &filename) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	FILE *fp = File::OpenCFile(filename, replaySaveWroteHeader ? "ab" : "wb");
 	if (!fp) {
 		ERROR_LOG(Log::System, "Failed to open replay file: %s", filename.c_str());
@@ -318,6 +356,7 @@ int ReplayVersion() {
 }
 
 void ReplayAbort() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	replayItems.clear();
 	replayExecPos = 0;
 	replaySaveWroteHeader = false;
@@ -330,13 +369,18 @@ void ReplayAbort() {
 
 	replayDiskPos = 0;
 	diskFailed = false;
+
+	replayMarkerRequested = false;
+	replayMarkerCount = 0;
 }
 
 bool ReplayIsExecuting() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	return replayState == ReplayState::EXECUTE;
 }
 
 bool ReplayIsSaving() {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	return replayState == ReplayState::SAVE;
 }
 
@@ -348,6 +392,9 @@ static void ReplaySaveCtrl(uint32_t &buttons, uint8_t analog[2][2], uint64_t t) 
 	if (memcmp(lastAnalog, analog, sizeof(lastAnalog)) != 0) {
 		replayItems.push_back(ReplayItemHeader(ReplayAction::ANALOG, t, analog));
 		memcpy(lastAnalog, analog, sizeof(lastAnalog));
+	}
+	if (replayMarkerRequested.exchange(false)) {
+		replayItems.push_back(ReplayItemHeader(ReplayAction::MARKER, t, (uint64_t)0));
 	}
 }
 
@@ -368,6 +415,13 @@ static void ReplayExecuteCtrl(uint32_t &buttons, uint8_t analog[2][2], uint64_t 
 			memcpy(lastAnalog, item.info.analog, sizeof(lastAnalog));
 			break;
 
+		case ReplayAction::MARKER:
+			replayMarkerCount++;
+			if (replayMarkerHandler) {
+				replayMarkerHandler(replayMarkerCount);
+			}
+			break;
+
 		default:
 			// Ignore non ctrl types.
 			break;
@@ -384,6 +438,7 @@ static void ReplayExecuteCtrl(uint32_t &buttons, uint8_t analog[2][2], uint64_t 
 }
 
 void ReplayApplyCtrl(uint32_t &buttons, uint8_t analog[2][2], uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 		ReplayExecuteCtrl(buttons, analog, t);
@@ -432,6 +487,7 @@ static const ReplayItem *ReplayNextDisk(ReplayAction action, uint64_t t) {
 }
 
 uint32_t ReplayApplyDisk(ReplayAction action, uint32_t result, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 	{
@@ -452,6 +508,7 @@ uint32_t ReplayApplyDisk(ReplayAction action, uint32_t result, uint64_t t) {
 }
 
 uint64_t ReplayApplyDisk64(ReplayAction action, uint64_t result, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 	{
@@ -472,6 +529,7 @@ uint64_t ReplayApplyDisk64(ReplayAction action, uint64_t result, uint64_t t) {
 }
 
 uint32_t ReplayApplyDiskRead(void *data, uint32_t readSize, uint32_t dataSize, bool inGameDir, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	// Ignore PSP/GAME reads if we haven't seen a write there.
 	if (inGameDir && !replaySawGameDirWrite) {
 		return readSize;
@@ -504,6 +562,7 @@ uint32_t ReplayApplyDiskRead(void *data, uint32_t readSize, uint32_t dataSize, b
 }
 
 uint64_t ReplayApplyDiskWrite(const void *data, uint64_t writeSize, uint64_t dataSize, bool *diskFull, bool inGameDir, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 	case ReplayState::SAVE:
@@ -565,6 +624,7 @@ PSPFileInfo ConvertFileInfo(const ReplayFileInfo &info) {
 }
 
 PSPFileInfo ReplayApplyDiskFileInfo(const PSPFileInfo &data, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 	{
@@ -594,6 +654,7 @@ PSPFileInfo ReplayApplyDiskFileInfo(const PSPFileInfo &data, uint64_t t) {
 }
 
 std::vector<PSPFileInfo> ReplayApplyDiskListing(const std::vector<PSPFileInfo> &data, uint64_t t) {
+	std::lock_guard<std::recursive_mutex> guard(replayLock);
 	switch (replayState) {
 	case ReplayState::EXECUTE:
 	{

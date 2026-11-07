@@ -162,6 +162,14 @@ private:
 	std::vector<std::pair<VirtKey, bool>> queuedVirtKeys_;
 
 	bool frameStep_ = false;
+	// Frame advance hotkeys. A held hotkey keeps advancing once it has been down for a moment.
+	void PressFrameAdvance(int frames);
+	void ReleaseFrameAdvance();
+	void ContinueFrameAdvance();
+	int frameStepsLeft_ = 0;
+	int frameAdvanceKeysHeld_ = 0;
+	int frameAdvanceHeldFrames_ = 1;
+	double frameAdvanceHoldStart_ = 0.0;
 #ifndef MOBILE_DEVICE
 	bool startDumping_ = false;
 #endif

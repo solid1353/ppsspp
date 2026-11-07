@@ -15,6 +15,7 @@
 // NOTE: In MSVC, don't forget to set the working directory to $ProjectDir\.. in debug settings.
 
 #include "ppsspp_config.h"
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -72,6 +73,7 @@
 #include "headless/ReverseEngineer.h"
 #include "Core/WebServer.h"
 #include "Core/HLE/sceUtility.h"
+#include "Core/InputRecording.h"
 #include "Core/Instance.h"
 #include "Core/SaveState.h"
 #include "GPU/GPUCommon.h"
@@ -312,6 +314,35 @@ static void SaveScreenshotNow(const Path &path) {
 	GPUDebugBuffer buffer;
 	gpu->GetCurrentFramebuffer(buffer, type, 1);
 	SaveDisplayScreenshot(path, TranslateDebugBufferToCompare(&buffer, 512, 272));
+}
+
+// Savestates of --input-recording-capture-dir that the worker hasn't finished writing.
+static std::atomic<int> g_capturesPending{0};
+
+static void CaptureMarker(int marker) {
+	InputRecording::CaptureMode mode = InputRecording::CaptureMode::Full;
+	InputRecording::ParseCaptureMode(g_Config.launchCaptureMode, &mode);
+	File::CreateFullPath(g_Config.launchCaptureDir);
+	if (mode != InputRecording::CaptureMode::Savestates) {
+		SaveScreenshotNow(g_Config.launchCaptureDir / StringFromFormat("%03d.png", marker));
+	}
+	if (mode != InputRecording::CaptureMode::Screenshots) {
+		const Path stateDir = g_Config.launchCaptureDir / "sstates";
+		File::CreateFullPath(stateDir);
+		const Path statePath = stateDir / StringFromFormat("%03d.ppst", marker);
+		g_capturesPending++;
+		const bool queued = SaveState::Save(statePath, -1, [](SaveState::Status status, std::string_view message, std::string_view) {
+			if (status == SaveState::Status::FAILURE) {
+				fprintf(stderr, "%.*s\n", (int)message.size(), message.data());
+			}
+			g_capturesPending--;
+		});
+		if (queued) {
+			SaveState::RecordGEDump(statePath);
+		} else {
+			g_capturesPending--;
+		}
+	}
 }
 
 void SendDebugScreenshot(const DebugScreenshotDesc &desc) {
@@ -663,6 +694,14 @@ static bool RunAutoTest(GraphicsContext *graphicsContext, CoreParameter &corePar
 			}
 			__CtrlUpdateButtons(held, released & ~held);
 		}
+		// Process() right away, so a state is of the frame its screenshot is.
+		const std::vector<int> captures = InputRecording::TakeCaptures();
+		for (int marker : captures) {
+			CaptureMarker(marker);
+		}
+		if (!captures.empty()) {
+			SaveState::Process();
+		}
 		for (auto &shot : screenshotsAt) {
 			if (!shot.second.empty() && emulatedElapsed >= shot.first) {
 				SaveScreenshotNow(shot.second);
@@ -696,6 +735,11 @@ static bool RunAutoTest(GraphicsContext *graphicsContext, CoreParameter &corePar
 			}
 		}
 		PSP_RunLoopFor(blockTicks);
+
+		// The replay's end stops the CPU too, but that only lands from a running state.
+		if (!g_Config.launchCaptureDir.empty() && InputRecording::PlaybackFinished()) {
+			break;
+		}
 
 		// If we were rendering, this might be a nice time to do something about it.
 		if (coreState == CORE_NEXTFRAME) {
@@ -753,6 +797,18 @@ static bool RunAutoTest(GraphicsContext *graphicsContext, CoreParameter &corePar
 	if (rebootFailed) {
 		return false;
 	}
+
+	// A marker right at the end of the replay, then what's still being written.
+	for (int marker : InputRecording::TakeCaptures()) {
+		CaptureMarker(marker);
+	}
+	while (g_capturesPending > 0 && time_now_d() < wallDeadline) {
+		SaveState::Process();
+		if (g_capturesPending > 0) {
+			sleep_ms(1, "capture");
+		}
+	}
+
 	if (gpu) {
 		gpu->EndHostFrame();
 	}

@@ -240,6 +240,37 @@ namespace MainWindow {
 		*windowHeight = rc.bottom - rc.top;
 	}
 
+	// The game fitted inside a 1024x768 client area, whatever the display scaling, centered on the
+	// monitor's work area.
+	static RECT GetCenteredWindowRect(HMONITOR monitor) {
+		const DisplayLayoutConfig &config = g_Config.GetDisplayLayoutConfig(g_display.GetDeviceOrientation());
+		RECT size{};
+		size.right = config.InternalRotationIsPortrait() ? 435 : 1024;
+		size.bottom = config.InternalRotationIsPortrait() ? 768 : 580;
+		AdjustWindowRect(&size, WS_OVERLAPPEDWINDOW, g_Config.bShowMenuBar ? TRUE : FALSE);
+		const int width = size.right - size.left;
+		const int height = size.bottom - size.top;
+
+		MONITORINFO info{sizeof(MONITORINFO)};
+		GetMonitorInfo(monitor, &info);
+		RECT rc;
+		rc.left = info.rcWork.left + (info.rcWork.right - info.rcWork.left - width) / 2;
+		rc.top = info.rcWork.top + std::max(0, (int)(info.rcWork.bottom - info.rcWork.top - height) / 2);
+		rc.right = rc.left + width;
+		rc.bottom = rc.top + height;
+		return rc;
+	}
+
+	void RecenterWindow() {
+		if (g_Config.bFullScreen) {
+			return;
+		}
+		const RECT rc = GetCenteredWindowRect(MonitorFromWindow(hwndMain, MONITOR_DEFAULTTOPRIMARY));
+		ShowWindow(hwndMain, SW_RESTORE);
+		MoveWindow(hwndMain, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
+		SavePosition();
+	}
+
 	void SetWindowSize(int zoom) {
 		AssertCurrentThreadName("Main");
 
@@ -516,6 +547,14 @@ namespace MainWindow {
 		if ((g_Config.iWindowX == -1 && g_Config.iWindowY == -1) || g_Config.iWindowWidth < 20 || g_Config.iWindowHeight < 20) {
 			const RECT rc = DetermineDefaultWindowRectangle();
 			// Should be a first boot, or just bad parameters. Reset.
+			g_Config.iWindowSizeState = (int)WindowSizeState::Normal;
+			g_Config.iWindowX = rc.left;
+			g_Config.iWindowY = rc.top;
+			g_Config.iWindowWidth = rc.right - rc.left;
+			g_Config.iWindowHeight = rc.bottom - rc.top;
+		}
+		if (g_Config.launchCenteredWindow) {
+			const RECT rc = GetCenteredWindowRect(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY));
 			g_Config.iWindowSizeState = (int)WindowSizeState::Normal;
 			g_Config.iWindowX = rc.left;
 			g_Config.iWindowY = rc.top;
@@ -1105,6 +1144,10 @@ namespace MainWindow {
 
 		case WM_USER_WINDOW_TITLE_CHANGED:
 			UpdateWindowTitle();
+			break;
+
+		case WM_USER_RECENTER_WINDOW:
+			RecenterWindow();
 			break;
 
 		case WM_USER_SWITCHUMD_UPDATED:

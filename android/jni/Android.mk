@@ -699,6 +699,8 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/MemMapFunctions.cpp \
   $(SRC)/Core/Reporting.cpp \
   $(SRC)/Core/Replay.cpp \
+  $(SRC)/Core/InputRecording.cpp \
+  $(SRC)/Core/AgentInput.cpp \
   $(SRC)/Core/RetroAchievements.cpp \
   $(SRC)/Core/SaveState.cpp \
   $(SRC)/Core/SaveStateRewind.cpp \
@@ -731,6 +733,7 @@ EXEC_AND_LIB_FILES := \
   $(SRC)/Core/Debugger/WebSocket/MemorySubscriber.cpp \
   $(SRC)/Core/Debugger/WebSocket/MemoryInfoSubscriber.cpp \
   $(SRC)/Core/Debugger/WebSocket/ReplaySubscriber.cpp \
+  $(SRC)/Core/Debugger/WebSocket/AgentSubscriber.cpp \
   $(SRC)/Core/Debugger/WebSocket/SteppingBroadcaster.cpp \
   $(SRC)/Core/Debugger/WebSocket/SteppingSubscriber.cpp \
   $(SRC)/Core/Debugger/WebSocket/WebSocketUtils.cpp \

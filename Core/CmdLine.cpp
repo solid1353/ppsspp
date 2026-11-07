@@ -6,6 +6,7 @@
 
 #include "Core/Config.h"
 #include "Core/CmdLine.h"
+#include "Core/InputRecording.h"
 #include "Core/WebServer.h"
 #include "Core/Util/PathUtil.h"
 #include "Common/File/FileUtil.h"
@@ -228,6 +229,18 @@ static const CommandLineParam g_autoParams[] = {
 	{POFF(stateToSave), CmdParamType::String, "save-state", '\0', "Save a state to FILE partway through the run", CmdLineMode::Headless},
 	{POFF(fastForwardForFrames), CmdParamType::Int, "fast-forward-for-frames", '\0', "Fast-forward this many frames (vblanks) after boot and after every reset", CmdLineMode::Application},
 	{POFF(mute), CmdParamType::Bool, "mute", '\0', "Silence game and UI audio for this run", CmdLineMode::Application},
+	{POFF(turbo), CmdParamType::Bool, "turbo", '\0', "Start every boot and reset at alternate speed 1", CmdLineMode::Application},
+	{POFF(unlimited), CmdParamType::Bool, "unlimited", '\0', "Start every boot and reset fast-forwarding, and stay there", CmdLineMode::Application},
+	{POFF(readOnlySettings), CmdParamType::Bool, "read-only-settings", '\0', "Write no ini file in this run", CmdLineMode::Application},
+	{POFF(centeredWindow), CmdParamType::Bool, "centered-window", '\0', "Fit the window to the game and center it on its screen, without saving that", CmdLineMode::Application},
+	{POFF(savedataDir), CmdParamType::String, "savedata", '\0', "Use this existing directory as ms0:/PSP/SAVEDATA for this run"},
+	{POFF(discardSavedata), CmdParamType::Bool, "discard-savedata", '\0', "Report savedata writes and deletes as done without doing them"},
+	{POFF(volatileSavedata), CmdParamType::Bool, "volatile-savedata", '\0', "Run on a copy of the saves, dropped when the game stops or resets"},
+	{POFF(inputRecording), CmdParamType::String, "input-recording", '\0', "Replay this input recording from boot"},
+	{POFF(inputRecordingCreate), CmdParamType::String, "input-recording-create", '\0', "Record input from boot to this file"},
+	{POFF(inputRecordingCaptureDir), CmdParamType::String, "input-recording-capture-dir", '\0', "Capture at the replay's markers into this directory, and exit when it ends", CmdLineMode::Headless},
+	{POFF(inputRecordingCaptureMode), CmdParamType::String, "input-recording-capture-mode", '\0', "What to capture: full (default), screenshots or savestates", CmdLineMode::Headless},
+	{POFF(inputRecordingCaptureMarkers), CmdParamType::String, "input-recording-capture-markers", '\0', "Capture only these 1-based markers, such as 1,3-5", CmdLineMode::Headless},
 	{POFF(compare), CmdParamType::Bool, "compare", 'c', "Enable comparison mode", CmdLineMode::Headless},
 	{POFF(bench), CmdParamType::Bool, "bench", 'b', "Enable benchmark mode", CmdLineMode::Headless},
 	{POFF(oldAtrac), CmdParamType::Bool, "old-atrac", '\0', "Use old ATRAC decoder"},
@@ -294,6 +307,7 @@ static const CommandLineParam g_autoParams[] = {
 	{POFF(msaa), CmdParamType::Int, "msaa", '\0', "Set the MSAA level (0 = off, 1 = 2x, 2 = 4x, 3 = 8x)"},
 	{POFF(debuggerPort), CmdParamType::Int, "debugger", '\0', "Enable the WebSocket debugger on this port (0 = pick automatically); see docs/WebSocketDebugger.md"},
 	{POFF(debuggerRunPort), CmdParamType::Int, "debugger-run", '\0', "Like --debugger, but starts running instead of waiting at the entry point", CmdLineMode::Headless},
+	{POFF(debuggerLocal), CmdParamType::Bool, "debugger-local", '\0', "Keep the debugger on this machine: bind 127.0.0.1 and report nothing to report.ppsspp.org"},
 	{POFF(autoSaveLoadSymbols), CmdParamType::Bool, "auto-save-load-symbols", '\0', "Auto save/load per-module and per-game symbol files (see bAutoSaveLoadSymbols)", CmdLineMode::Both},
 	{POFF(bootVSH), CmdParamType::Bool, "vsh", '\0', "Boot the VSH (requires files dumped from a PSP in the flash0 directory)"},
 	{POFF(disableHLE), CmdParamType::Int, "disable-hle", '\0', "Bitmask of libraries to run the real firmware module for instead of our HLE", CmdLineMode::Both},
@@ -600,6 +614,58 @@ CommandLineParseResult CommandLineOptions::Parse(int argc, const char *argv[], C
 		return CommandLineParseResult::Error;
 	}
 
+	if (unlimited.value_or(false) && (turbo.value_or(false) || fastForwardForFrames.has_value())) {
+		PRINT_STDERR("Error: --unlimited can't be used with --turbo or --fast-forward-for-frames.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (centeredWindow.value_or(false) && window.has_value()) {
+		PRINT_STDERR("Error: --centered-window can't be used with --window.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (discardSavedata.value_or(false) && volatileSavedata.value_or(false)) {
+		PRINT_STDERR("Error: --discard-savedata can't be used with --volatile-savedata.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (savedataDir.has_value() && !File::IsDirectory(Path(savedataDir.value()))) {
+		PRINT_STDERR("Error: --savedata needs an existing directory.\n");
+		return CommandLineParseResult::Error;
+	}
+
+	if (inputRecording.has_value() && inputRecordingCreate.has_value()) {
+		PRINT_STDERR("Error: --input-recording can't be used with --input-recording-create.\n");
+		return CommandLineParseResult::Error;
+	}
+	if ((inputRecording.has_value() || inputRecordingCreate.has_value()) && stateToLoad.has_value()) {
+		PRINT_STDERR("Error: input recordings start from boot, so they can't be used with --state.\n");
+		return CommandLineParseResult::Error;
+	}
+	if ((inputRecording.has_value() || inputRecordingCreate.has_value()) && discardSavedata.value_or(false)) {
+		PRINT_STDERR("Error: a recording holds its game's saves, so it can't be used with --discard-savedata.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (inputRecording.has_value() && !File::Exists(Path(inputRecording.value()))) {
+		PRINT_STDERR("Error: --input-recording needs an existing file.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (!inputRecording.has_value() && (inputRecordingCaptureDir.has_value() || inputRecordingCaptureMode.has_value() || inputRecordingCaptureMarkers.has_value())) {
+		PRINT_STDERR("Error: the capture options need --input-recording.\n");
+		return CommandLineParseResult::Error;
+	}
+	if (!inputRecordingCaptureDir.has_value() && (inputRecordingCaptureMode.has_value() || inputRecordingCaptureMarkers.has_value())) {
+		PRINT_STDERR("Error: the capture options need --input-recording-capture-dir.\n");
+		return CommandLineParseResult::Error;
+	}
+	InputRecording::CaptureMode captureMode;
+	if (!InputRecording::ParseCaptureMode(inputRecordingCaptureMode.value_or(""), &captureMode)) {
+		PRINT_STDERR("Error: --input-recording-capture-mode needs full, screenshots or savestates.\n");
+		return CommandLineParseResult::Error;
+	}
+	InputRecording::MarkerRanges markerRanges;
+	if (!InputRecording::ParseMarkerSpec(inputRecordingCaptureMarkers.value_or(""), &markerRanges)) {
+		PRINT_STDERR("Error: --input-recording-capture-markers needs numbers and ascending ranges, such as 1,3-5.\n");
+		return CommandLineParseResult::Error;
+	}
+
 	if (debuggerPort.has_value() && debuggerRunPort.has_value()) {
 		PRINT_STDERR("Error: --debugger and --debugger-run can't be used together.\n");
 		return CommandLineParseResult::Error;
@@ -619,6 +685,18 @@ void CommandLineOptions::ApplyToConfig() const {
 	g_Config.launchCheats = launchCheats;
 	g_Config.launchFastForwardFrames = fastForwardForFrames.value_or(0);
 	g_Config.launchMute = mute.value_or(false);
+	g_Config.launchTurbo = turbo.value_or(false);
+	g_Config.launchUnlimited = unlimited.value_or(false);
+	g_Config.launchReadOnlySettings = readOnlySettings.value_or(false);
+	g_Config.launchCenteredWindow = centeredWindow.value_or(false);
+	g_Config.launchSavedataDir = Path(savedataDir.value_or(""));
+	g_Config.launchDiscardSavedata = discardSavedata.value_or(false);
+	g_Config.launchVolatileSavedata = volatileSavedata.value_or(false);
+	g_Config.launchInputRecording = Path(inputRecording.value_or(""));
+	g_Config.launchInputRecordingCreate = Path(inputRecordingCreate.value_or(""));
+	g_Config.launchCaptureDir = Path(inputRecordingCaptureDir.value_or(""));
+	g_Config.launchCaptureMode = inputRecordingCaptureMode.value_or("");
+	g_Config.launchCaptureMarkers = inputRecordingCaptureMarkers.value_or("");
 	if (window.has_value()) {
 		const auto &[x, y, width, height] = window.value();
 		g_Config.iWindowX = x;
@@ -626,6 +704,12 @@ void CommandLineOptions::ApplyToConfig() const {
 		g_Config.iWindowWidth = width;
 		g_Config.iWindowHeight = height;
 		g_Config.iWindowSizeState = (int)WindowSizeState::Normal;
+	}
+	if (centeredWindow.value_or(false)) {
+		g_Config.bFullScreen = false;
+		g_Config.DoNotSaveSetting(&g_Config.bFullScreen);
+	}
+	if (window.has_value() || centeredWindow.value_or(false)) {
 		for (void *setting : {(void *)&g_Config.iWindowX, (void *)&g_Config.iWindowY, (void *)&g_Config.iWindowWidth,
 				(void *)&g_Config.iWindowHeight, (void *)&g_Config.iWindowSizeState}) {
 			g_Config.DoNotSaveSetting(setting);
@@ -712,6 +796,7 @@ void CommandLineOptions::ApplyToConfig() const {
 		// --debugger=0 still means "pick any free port", but a specific port was asked for by
 		// something that intends to connect to it, so don't quietly come up on a different one.
 		WebServerSetRequireExactPort(DebuggerPort().value() != 0);
+		WebServerSetLoopbackOnly(debuggerLocal.value_or(false));
 	}
 
 	if (autoSaveLoadSymbols.has_value()) {

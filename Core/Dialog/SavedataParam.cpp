@@ -339,6 +339,10 @@ bool SavedataParam::Delete(SceUtilitySavedataParam* param, const std::string &sa
 		return false;
 	}
 
+	if (g_Config.launchDiscardSavedata) {
+		return true;
+	}
+
 	ClearSFOCache();
 	pspFileSystem.RmDir(dirPath);
 	return true;
@@ -372,6 +376,10 @@ int SavedataParam::DeleteData(SceUtilitySavedataParam* param) {
 
 	if (!subFolder.size()) {
 		ERROR_LOG(Log::sceUtility, "Bad subfolder, ignoring delete of %s", filePath.c_str());
+		return 0;
+	}
+
+	if (g_Config.launchDiscardSavedata) {
 		return 0;
 	}
 
@@ -441,6 +449,13 @@ int SavedataParam::Save(SceUtilitySavedataParam* param, const std::string &saveD
 		return SCE_UTILITY_SAVEDATA_ERROR_SAVE_PARAM;
 	} else if (param->secureVersion != 0) {
 		INFO_LOG(Log::sceUtility, "Savedata version requested on save: %d", param->secureVersion);
+	}
+
+	if (g_Config.launchDiscardSavedata) {
+		if (param->saveNameList.IsValid()) {
+			strncpy(param->saveName, saveDirName.c_str(), 20);
+		}
+		return 0;
 	}
 
 	std::string dirPath = GetSaveFilePath(param, GetSaveDir(param, saveDirName));

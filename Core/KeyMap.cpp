@@ -493,18 +493,30 @@ const KeyMap_IntStrPair psp_button_names[] = {
 	{VIRTKEY_SPEED_CUSTOM1, "Alt speed 1"},
 	{VIRTKEY_SPEED_CUSTOM2, "Alt speed 2"},
 	{VIRTKEY_SPEED_ANALOG, "Analog speed"},
+	{VIRTKEY_TURBO_TOGGLE, "Turbo toggle"},
+	{VIRTKEY_SLOW_MOTION_TOGGLE, "Slow motion toggle"},
+	{VIRTKEY_UNLIMITED_TOGGLE, "Unlimited toggle"},
 	{VIRTKEY_RESET_EMULATION, "Reset"},
+	{VIRTKEY_STOP_GAME, "Stop game"},
 	{VIRTKEY_FRAME_ADVANCE, "Frame Advance"},
+	{VIRTKEY_FRAME_ADVANCE_DOUBLE, "Frame Advance (double)"},
 #if !defined(MOBILE_DEVICE)
 	{VIRTKEY_RECORD, "Audio/Video Recording" },
 #endif
+	{VIRTKEY_INPUT_RECORDING_MARKER, "Input recording marker"},
 	{VIRTKEY_REWIND, "Rewind"},
 	{VIRTKEY_SAVE_STATE, "Save State"},
+	{VIRTKEY_SAVE_STATE_NEXT_SLOT, "Save State and Next Slot"},
 	{VIRTKEY_LOAD_STATE, "Load State"},
+	{VIRTKEY_LOAD_UNDO_STATE, "Load Backup State"},
+	{VIRTKEY_DELETE_STATE, "Delete State"},
 	{VIRTKEY_PREVIOUS_SLOT, "Previous Slot"},
 	{VIRTKEY_NEXT_SLOT, "Next Slot"},
 #if !defined(MOBILE_DEVICE)
 	{VIRTKEY_TOGGLE_FULLSCREEN, "Toggle Fullscreen"},
+#endif
+#if PPSSPP_PLATFORM(WINDOWS)
+	{VIRTKEY_RECENTER_WINDOW, "Recenter window"},
 #endif
 	{VIRTKEY_TOGGLE_DEBUGGER, "Toggle Debugger"},
 	{VIRTKEY_TOGGLE_TILT, "Toggle tilt control"},

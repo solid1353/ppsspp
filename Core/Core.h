@@ -75,6 +75,8 @@ enum class BreakReason {
 	UIPause,
 	HLEDebugBreak,
 	RunUntilTime,
+	InputRecordingEnd,
+	AgentStep,
 };
 const char *BreakReasonToString(BreakReason reason);
 

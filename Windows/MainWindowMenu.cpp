@@ -214,7 +214,7 @@ namespace MainWindow {
 		TranslateMenuItem(menu, ID_FILE_OPEN_NEW_INSTANCE);
 		TranslateMenuItem(menu, ID_FILE_MEMSTICK);
 		TranslateMenuItem(menu, ID_FILE_SAVESTATE_SLOT_MENU, useDefHotkey(VIRTKEY_NEXT_SLOT) ? L"\tF3" : L"");
-		TranslateMenuItem(menu, ID_FILE_QUICKLOADSTATE, useDefHotkey(VIRTKEY_LOAD_STATE) ? L"\tF4" : L"");
+		TranslateMenuItem(menu, ID_FILE_QUICKLOADSTATE, L"");
 		TranslateMenuItem(menu, ID_FILE_QUICKSAVESTATE, useDefHotkey(VIRTKEY_SAVE_STATE) ? L"\tF2" : L"");
 		TranslateMenuItem(menu, ID_FILE_LOADSTATEFILE);
 		TranslateMenuItem(menu, ID_FILE_SAVESTATEFILE);
@@ -223,7 +223,7 @@ namespace MainWindow {
 
 		// Emulation menu
 		TranslateMenuItem(menu, ID_EMULATION_PAUSE);
-		TranslateMenuItem(menu, ID_EMULATION_STOP, g_Config.bSystemControls ? L"\tCtrl+W" : L"");
+		TranslateMenuItem(menu, ID_EMULATION_STOP, L"");
 		TranslateMenuItem(menu, ID_EMULATION_RESET, g_Config.bSystemControls ? L"\tCtrl+B" : L"");
 		TranslateMenuItem(menu, ID_EMULATION_SWITCH_UMD, g_Config.bSystemControls ? L"\tCtrl+U" : L"");
 		TranslateMenuItem(menu, ID_EMULATION_ROTATION_MENU);
@@ -250,7 +250,7 @@ namespace MainWindow {
 		TranslateMenuItem(menu, ID_DEBUG_EXTRACTFILE);
 		TranslateMenuItem(menu, ID_DEBUG_LOG, g_Config.bSystemControls ? L"\tCtrl+L" : L"");
 		TranslateMenuItem(menu, ID_DEBUG_MEMORYBASE);
-		TranslateMenuItem(menu, ID_DEBUG_MEMORYVIEW, g_Config.bSystemControls ? L"\tCtrl+M" : L"");
+		TranslateMenuItem(menu, ID_DEBUG_MEMORYVIEW, L"");
 
 		// Options menu
 		TranslateMenuItem(menu, ID_OPTIONS_LANGUAGE);
@@ -601,16 +601,6 @@ namespace MainWindow {
 			}
 			break;
 
-		case ID_FILE_QUICKLOADSTATE_HC:
-		{
-			if (!Achievements::WarnUserIfHardcoreModeActive(false) && !NetworkWarnUserIfOnlineAndCantSavestate()) {
-				if (!KeyMap::PspButtonHasMappings(VIRTKEY_LOAD_STATE)) {
-					SetCursor(LoadCursor(0, IDC_WAIT));
-					SaveState::LoadSlot(SaveState::GetGamePrefix(g_paramSFO), g_Config.iCurrentStateSlot, SaveStateActionFinished);
-				}
-			}
-			break;
-		}
 		case ID_FILE_QUICKSAVESTATE:
 		{
 			if (!Achievements::WarnUserIfHardcoreModeActive(true) && !NetworkWarnUserIfOnlineAndCantSavestate()) {

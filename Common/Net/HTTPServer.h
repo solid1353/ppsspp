@@ -105,6 +105,8 @@ public:
 	// for a new connection to handle.
 	bool RunSlice(double timeout);
 	bool Listen(int port, const char *reason, net::DNSType type = net::DNSType::ANY);
+	// Listen() then binds 127.0.0.1 only.
+	void SetLoopbackOnly(bool only) { loopbackOnly_ = only; }
 	void Stop();
 
 	void RegisterHandler(const char *url_path, UrlHandlerFunc handler);
@@ -126,6 +128,8 @@ public:
 	}
 
 private:
+	bool loopbackOnly_ = false;
+
 	bool Listen6(int port, bool ipv6_only, const char *reason);
 	bool Listen4(int port, const char *reason);
 

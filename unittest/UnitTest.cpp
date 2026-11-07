@@ -104,7 +104,10 @@
 #include "Common/Serialize/SerializeSet.h"
 #include "Common/Serialize/SerializeList.h"
 
+#include "Core/AgentInput.h"
 #include "Core/CmdLine.h"
+#include "Core/InputRecording.h"
+#include "Core/Replay.h"
 #include "Core/System.h"
 #include "Common/Data/Collections/Hashmaps.h"
 #include "Core/Util/BlockAllocator.h"
@@ -3587,6 +3590,132 @@ bool TestGEDumpGameID() {
 	return true;
 }
 
+bool TestInputRecording() {
+	InputRecording::MarkerRanges ranges;
+	EXPECT_TRUE(InputRecording::ParseMarkerSpec("", &ranges));
+	EXPECT_TRUE(ranges.empty());
+	EXPECT_TRUE(InputRecording::MarkerSelected(ranges, 7));
+
+	EXPECT_TRUE(InputRecording::ParseMarkerSpec("5,1,3-4,8-9,9-12", &ranges));
+	EXPECT_EQ_INT((int)ranges.size(), 3);
+	EXPECT_EQ_INT(ranges[0].first, 1);
+	EXPECT_EQ_INT(ranges[0].second, 1);
+	EXPECT_EQ_INT(ranges[1].first, 3);
+	EXPECT_EQ_INT(ranges[1].second, 5);
+	EXPECT_EQ_INT(ranges[2].second, 12);
+	EXPECT_TRUE(InputRecording::MarkerSelected(ranges, 4));
+	EXPECT_FALSE(InputRecording::MarkerSelected(ranges, 2));
+	EXPECT_FALSE(InputRecording::MarkerSelected(ranges, 13));
+
+	for (const char *bad : { "0", "a", "3-1", "1,", ",1", "1--2", "-3", "1-", "1234567890" }) {
+		EXPECT_FALSE(InputRecording::ParseMarkerSpec(bad, &ranges));
+	}
+
+	InputRecording::CaptureMode mode;
+	EXPECT_TRUE(InputRecording::ParseCaptureMode("", &mode));
+	EXPECT_EQ_INT((int)mode, (int)InputRecording::CaptureMode::Full);
+	EXPECT_TRUE(InputRecording::ParseCaptureMode("savestates", &mode));
+	EXPECT_EQ_INT((int)mode, (int)InputRecording::CaptureMode::Savestates);
+	EXPECT_FALSE(InputRecording::ParseCaptureMode("frames", &mode));
+
+	// A marker and the end survive a round trip, and each marker fires once, in order.
+	ReplayAbort();
+	ReplayBeginSave();
+	uint32_t buttons = 1;
+	uint8_t analog[2][2] = {{128, 128}, {128, 128}};
+	ReplayApplyCtrl(buttons, analog, 100);
+	ReplayRequestMarker();
+	buttons = 2;
+	ReplayApplyCtrl(buttons, analog, 200);
+	ReplayMarkEnd(300);
+	EXPECT_TRUE(ReplayIsSaving());
+	std::vector<uint8_t> data;
+	ReplayFlushBlob(&data);
+	ReplayAbort();
+
+	std::vector<int> markers;
+	ReplaySetMarkerHandler([&](int marker) {
+		markers.push_back(marker);
+	});
+	EXPECT_TRUE(ReplayExecuteBlob(ReplayVersion(), data));
+	EXPECT_EQ_INT((int)ReplayLastEventTime(), 300);
+	buttons = 0;
+	ReplayApplyCtrl(buttons, analog, 150);
+	EXPECT_EQ_INT((int)buttons, 1);
+	EXPECT_TRUE(markers.empty());
+	ReplayApplyCtrl(buttons, analog, 250);
+	EXPECT_EQ_INT((int)buttons, 2);
+	EXPECT_EQ_INT((int)markers.size(), 1);
+	EXPECT_TRUE(ReplayHasMoreEvents());
+	ReplayApplyCtrl(buttons, analog, 300);
+	EXPECT_FALSE(ReplayHasMoreEvents());
+	ReplaySetMarkerHandler(nullptr);
+	ReplayAbort();
+	return true;
+}
+
+bool TestAgentInput() {
+	AgentInput::OnBoot();
+	AgentInput::State state;
+	state.buttons = 0x4000;
+	state.analog[0] = 10;
+	std::string error;
+	EXPECT_TRUE(AgentInput::Set(state, &error));
+
+	u32 buttons = 0x10;
+	u8 analog[2] = {128, 128};
+	AgentInput::Apply(buttons, analog);
+	EXPECT_EQ_INT((int)buttons, 0x4000);
+	EXPECT_EQ_INT(analog[0], 10);
+	AgentInput::NoteSample(buttons, analog);
+	bool controlled = false;
+	AgentInput::State seen;
+	AgentInput::Get(&seen, &controlled);
+	EXPECT_TRUE(controlled);
+	EXPECT_EQ_INT((int)seen.buttons, 0x4000);
+
+	// A step's state wins while it runs, then the one set before comes back.
+	AgentInput::State stepState;
+	stepState.buttons = 0x2000;
+	EXPECT_EQ_INT(AgentInput::BeginStep(0, &stepState, &error), 0);
+	const int id = AgentInput::BeginStep(2, &stepState, &error);
+	EXPECT_TRUE(id != 0);
+	EXPECT_EQ_INT(AgentInput::BeginStep(1, nullptr, &error), 0);
+	buttons = 0;
+	AgentInput::Apply(buttons, analog);
+	EXPECT_EQ_INT((int)buttons, 0x2000);
+	AgentInput::OnVblank();
+	EXPECT_FALSE(AgentInput::GetStepResult(id).done);
+	AgentInput::OnVblank();
+	const AgentInput::StepResult result = AgentInput::GetStepResult(id);
+	EXPECT_TRUE(result.done);
+	EXPECT_FALSE(result.failed);
+	EXPECT_EQ_INT((int)(result.endFrame - result.startFrame), 2);
+	buttons = 0;
+	AgentInput::Apply(buttons, analog);
+	EXPECT_EQ_INT((int)buttons, 0x4000);
+
+	// Refused while a replay runs.
+	ReplayAbort();
+	ReplayBeginSave();
+	uint32_t recorded = 1;
+	uint8_t recordedAnalog[2][2] = {{128, 128}, {128, 128}};
+	ReplayApplyCtrl(recorded, recordedAnalog, 100);
+	std::vector<uint8_t> data;
+	ReplayFlushBlob(&data);
+	ReplayAbort();
+	EXPECT_TRUE(ReplayExecuteBlob(ReplayVersion(), data));
+	EXPECT_FALSE(AgentInput::Set(state, &error));
+	EXPECT_EQ_INT(AgentInput::BeginStep(1, &stepState, &error), 0);
+	ReplayAbort();
+
+	AgentInput::OnBoot();
+	buttons = 0x10;
+	AgentInput::Apply(buttons, analog);
+	EXPECT_EQ_INT((int)buttons, 0x10);
+	return true;
+}
+
 bool TestCmdLine() {
 	{
 		const char *argv[] = {
@@ -3712,6 +3841,40 @@ bool TestCmdLine() {
 			const char *argv[] = { "ppsspp", arg };
 			CommandLineOptions options;
 			EXPECT_EQ_INT((int)options.Parse(ARRAY_SIZE(argv), argv, CmdLineMode::Application), (int)CommandLineParseResult::Error);
+		}
+	}
+	// Run-only launch options.
+	{
+		const char *argv[] = { "ppsspp", "--turbo", "--read-only-settings", "--centered-window", "--discard-savedata" };
+		CommandLineOptions options;
+		EXPECT_EQ_INT((int)options.Parse(ARRAY_SIZE(argv), argv, CmdLineMode::Application), (int)CommandLineParseResult::Continue);
+		EXPECT_TRUE(options.turbo.value_or(false));
+		EXPECT_TRUE(options.readOnlySettings.value_or(false));
+		EXPECT_TRUE(options.centeredWindow.value_or(false));
+		EXPECT_TRUE(options.discardSavedata.value_or(false));
+	}
+	{
+		const char *conflicts[][3] = {
+			{ "ppsspp", "--unlimited", "--turbo" },
+			{ "ppsspp", "--unlimited", "--fast-forward-for-frames=10" },
+			{ "ppsspp", "--centered-window", "--window=0,0,640,480" },
+			{ "ppsspp", "--discard-savedata", "--volatile-savedata" },
+			{ "ppsspp", "--savedata=unittest_missing_savedata", "--mute" },
+			{ "ppsspp", "--input-recording=unittest_missing_recording", "--mute" },
+		};
+		for (auto &argv : conflicts) {
+			CommandLineOptions options;
+			EXPECT_EQ_INT((int)options.Parse(3, argv, CmdLineMode::Application), (int)CommandLineParseResult::Error);
+		}
+	}
+	{
+		const char *captureArgs[][3] = {
+			{ "headless", "--input-recording-capture-dir=dir", "--mute" },
+			{ "headless", "--input-recording-capture-mode=full", "--mute" },
+		};
+		for (auto &argv : captureArgs) {
+			CommandLineOptions options;
+			EXPECT_EQ_INT((int)options.Parse(2, argv, CmdLineMode::Headless), (int)CommandLineParseResult::Error);
 		}
 	}
 	// Test GL version override
@@ -4309,6 +4472,8 @@ TestItem availableTests[] = {
 	TEST_ITEM(LinAlg),
 	TEST_ITEM(Lang),
 	TEST_ITEM(CmdLine),
+	TEST_ITEM(InputRecording),
+	TEST_ITEM(AgentInput),
 	TEST_ITEM(ZipSlip),
 	TEST_ITEM(PS1Eboot),
 	TEST_ITEM(Lzrc),

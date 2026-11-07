@@ -319,6 +319,8 @@ const char *BreakReasonToString(BreakReason reason) {
 	case BreakReason::BreakOnBoot: return "ui.boot";
 	case BreakReason::AddBreakpoint: return "cpu.breakpoint.add";
 	case BreakReason::FrameAdvance: return "ui.frameAdvance";
+	case BreakReason::InputRecordingEnd: return "inputrecording.end";
+	case BreakReason::AgentStep: return "agent.step";
 	case BreakReason::UIPause: return "ui.pause";
 	case BreakReason::HLEDebugBreak: return "hle.step";
 	case BreakReason::RunUntilTime: return "cpu.runUntilTime";

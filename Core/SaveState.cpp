@@ -42,6 +42,7 @@
 
 #include "Core/SaveState.h"
 #include "Core/Config.h"
+#include "Core/InputRecording.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/Screenshot.h"
@@ -80,6 +81,10 @@ constexpr int SCREENSHOT_FAILURE_RETRIES = 6;
 static const char * const STATE_EXTENSION = "ppst";
 static const char * const UNDO_STATE_EXTENSION = "undo.ppst";
 static const char * const UNDO_SCREENSHOT_EXTENSION = "undo.jpg";
+static const char * const GE_DUMP_EXTENSION = "ppdmp";
+static const char * const UNDO_GE_DUMP_EXTENSION = "undo.ppdmp";
+// Moves on when a state stops being what its pending GE dump would show.
+static std::atomic<int> geDumpGeneration{0};
 // Namespaced the way UNDO_STATE_EXTENSION is, so a stray "<prefix>_<slot>.txt" someone happened to
 // leave in the savestate folder isn't mistaken for a slot's name.
 static const char * const NAME_EXTENSION = "name.txt";
@@ -235,6 +240,11 @@ int g_screenshotFailures;
 		auto s = p.Section("SaveStart", 1, 6);
 		if (!s)
 			return;
+
+		if (p.mode == p.MODE_READ) {
+			InputRecording::OnStateLoaded();
+			geDumpGeneration++;
+		}
 
 		if (s >= 6) {
 			// Fixed width and first, so the game a state belongs to can be read without loading it
@@ -789,6 +799,25 @@ int g_screenshotFailures;
 		}
 	}
 
+	void LoadBackupSlot(std::string_view gamePrefix, int slot, Callback callback) {
+		if (NetworkWarnUserIfOnlineAndCantSavestate() || Achievements::WarnUserIfHardcoreModeActive(false) || WarnUserIfVSHSession()) {
+			CallbackRefused(callback);
+			return;
+		}
+
+		Path fn = GenerateSaveSlotPath(gamePrefix, slot, UNDO_STATE_EXTENSION);
+		if (fn.empty() || !File::Exists(fn)) {
+			if (callback) {
+				auto sc = GetI18NCategory(I18NCat::SCREEN);
+				callback(Status::FAILURE, sc->T("No backup state"), "");
+			}
+			return;
+		}
+		Operation op(OperationType::Load, fn, slot, callback);
+		op.slotGamePrefix = gamePrefix;
+		QueueLoad(op);
+	}
+
 	bool UndoLoad(std::string_view gamePrefix, Callback callback) {
 		if (NetworkWarnUserIfOnlineAndCantSavestate()) {
 			CallbackRefused(callback);
@@ -830,12 +859,19 @@ int g_screenshotFailures;
 			}
 			Path shot = GenerateSaveSlotPath(gamePrefix, slot, SCREENSHOT_EXTENSION);
 			// Let's also create a screenshot.
+			Path dump = GenerateSaveSlotPath(gamePrefix, slot, GE_DUMP_EXTENSION);
 			if (g_Config.bEnableStateUndo) {
 				Path shotUndo = GenerateSaveSlotPath(gamePrefix, slot, UNDO_SCREENSHOT_EXTENSION);
 				DeleteIfExists(shotUndo);
 				RenameIfExists(shot, shotUndo);
+				Path dumpUndo = GenerateSaveSlotPath(gamePrefix, slot, UNDO_GE_DUMP_EXTENSION);
+				DeleteIfExists(dumpUndo);
+				RenameIfExists(dump, dumpUndo);
+			} else {
+				DeleteIfExists(dump);
 			}
 			ScheduleSaveScreenshot(shot);
+			RecordGEDump(fn);
 			// Written to a temporary file, then moved into place with the old state kept for undo.
 			Operation op(OperationType::Save, fn, slot, callback);
 			op.slotGamePrefix = gamePrefix;
@@ -865,6 +901,14 @@ int g_screenshotFailures;
 			Path shotUndo = GenerateSaveSlotPath(gamePrefix, slot, UNDO_SCREENSHOT_EXTENSION);
 			// Swap them so they can undo again to redo.  Mistakes happen.
 			SwapIfExists(shotUndo, shot);
+			Path dump = GenerateSaveSlotPath(gamePrefix, slot, GE_DUMP_EXTENSION);
+			Path dumpUndo = GenerateSaveSlotPath(gamePrefix, slot, UNDO_GE_DUMP_EXTENSION);
+			geDumpGeneration++;
+			if (File::Exists(dumpUndo)) {
+				SwapIfExists(dumpUndo, dump);
+			} else {
+				DeleteIfExists(dump);
+			}
 			SwapIfExists(fnUndo, fn);
 			Rescan(gamePrefix);
 			return true;
@@ -885,8 +929,29 @@ int g_screenshotFailures;
 			DeleteIfExists(fn);
 			DeleteIfExists(shot);
 			DeleteIfExists(fnName);
+			geDumpGeneration++;
+			DeleteIfExists(GenerateSaveSlotPath(gamePrefix, slot, GE_DUMP_EXTENSION));
 		}
 		Rescan(gamePrefix);
+	}
+
+	void RecordGEDump(const Path &statePath) {
+		Path dumpPath;
+		const std::string stateExtension = std::string(".") + STATE_EXTENSION;
+		if (!g_Config.bSaveStateGEDump || !gpu || !statePath.WithReplacedExtension(stateExtension, std::string(".") + GE_DUMP_EXTENSION, &dumpPath)) {
+			return;
+		}
+		const int generation = geDumpGeneration;
+		gpu->GetRecorder()->RecordNextFrame([dumpPath, generation](const Path &written) {
+			if (generation != geDumpGeneration) {
+				File::Delete(written);
+				return;
+			}
+			DeleteIfExists(dumpPath);
+			if (!File::Move(written, dumpPath)) {
+				ERROR_LOG(Log::SaveState, "Failed to move the savestate's GE dump to '%s'", dumpPath.c_str());
+			}
+		});
 	}
 
 	bool UndoLastSave(std::string_view gamePrefix) {
@@ -1093,7 +1158,7 @@ int g_screenshotFailures;
 		// rather than handing back the path itself. An undo state does work, and correctly:
 		// "x.undo.ppst" maps onto "x.undo.jpg".
 		std::vector<Path> paths;
-		for (const char *extension : { SCREENSHOT_EXTENSION, NAME_EXTENSION }) {
+		for (const char *extension : { SCREENSHOT_EXTENSION, NAME_EXTENSION, GE_DUMP_EXTENSION }) {
 			Path companion;
 			if (statePath.WithReplacedExtension(stateExtension, std::string(".") + extension, &companion)) {
 				paths.push_back(companion);

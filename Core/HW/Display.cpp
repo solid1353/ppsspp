@@ -25,6 +25,7 @@
 #include "Common/System/System.h"
 #include "Common/TimeUtil.h"
 #include "Common/Data/Text/StringWriter.h"
+#include "Core/AgentInput.h"
 #include "Core/Config.h"
 #include "Core/System.h"
 #include "Core/MIPS/MIPS.h"
@@ -247,6 +248,8 @@ void DisplayFireVblankEnd() {
 
 	__IoVblank();
 	__CtrlVblank();
+	// After the sample, so a step of N frames gives the game N samples.
+	AgentInput::OnVblank();
 }
 
 void DisplayFireFlip() {

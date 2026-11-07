@@ -34,6 +34,7 @@
     <ClCompile Include="..\..\Core\Debugger\WebSocket\MemorySubscriber.cpp" />
     <ClCompile Include="..\..\Core\Debugger\WebSocket\MemoryInfoSubscriber.cpp" />
     <ClCompile Include="..\..\Core\Debugger\WebSocket\ReplaySubscriber.cpp" />
+    <ClCompile Include="..\..\Core\Debugger\WebSocket\AgentSubscriber.cpp" />
     <ClCompile Include="..\..\Core\Debugger\WebSocket\SteppingBroadcaster.cpp" />
     <ClCompile Include="..\..\Core\Debugger\WebSocket\SteppingSubscriber.cpp" />
     <ClCompile Include="..\..\Core\Debugger\WebSocket\WebSocketUtils.cpp" />
@@ -255,6 +256,8 @@
     <ClCompile Include="..\..\Core\PSPLoaders.cpp" />
     <ClCompile Include="..\..\Core\Reporting.cpp" />
     <ClCompile Include="..\..\Core\Replay.cpp" />
+    <ClCompile Include="..\..\Core\InputRecording.cpp" />
+    <ClCompile Include="..\..\Core\AgentInput.cpp" />
     <ClCompile Include="..\..\Core\HLE\Plugins.cpp" />
     <ClCompile Include="..\..\Core\RetroAchievements.cpp" />
     <ClCompile Include="..\..\Core\SaveState.cpp" />
@@ -457,6 +460,7 @@
     <ClInclude Include="..\..\Core\Debugger\WebSocket\MemorySubscriber.h" />
     <ClInclude Include="..\..\Core\Debugger\WebSocket\MemoryInfoSubscriber.h" />
     <ClInclude Include="..\..\Core\Debugger\WebSocket\ReplaySubscriber.h" />
+    <ClInclude Include="..\..\Core\Debugger\WebSocket\AgentSubscriber.h" />
     <ClInclude Include="..\..\Core\Debugger\WebSocket\SteppingBroadcaster.h" />
     <ClInclude Include="..\..\Core\Debugger\WebSocket\SteppingSubscriber.h" />
     <ClInclude Include="..\..\Core\Debugger\WebSocket\WebSocketUtils.h" />
@@ -658,6 +662,8 @@
     <ClInclude Include="..\..\Core\PSPLoaders.h" />
     <ClInclude Include="..\..\Core\Reporting.h" />
     <ClInclude Include="..\..\Core\Replay.h" />
+    <ClInclude Include="..\..\Core\InputRecording.h" />
+    <ClInclude Include="..\..\Core\AgentInput.h" />
     <ClInclude Include="..\..\Core\HLE\Plugins.h" />
     <ClInclude Include="..\..\Core\RetroAchievements.h" />
     <ClInclude Include="..\..\Core\SaveState.h" />

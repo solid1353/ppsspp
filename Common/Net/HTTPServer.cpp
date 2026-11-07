@@ -200,6 +200,9 @@ static void SetPortReusePolicy(int sock) {
 }
 
 bool Server::Listen(int port, const char *reason, net::DNSType type) {
+	if (loopbackOnly_) {
+		type = net::DNSType::IPV4;
+	}
 	bool success = false;
 	if (type == net::DNSType::ANY || type == net::DNSType::IPV6) {
 		success = Listen6(port, type == net::DNSType::IPV6, reason);
@@ -218,7 +221,7 @@ bool Server::Listen4(int port, const char *reason) {
 	struct sockaddr_in server_addr;
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	server_addr.sin_addr.s_addr = htonl(loopbackOnly_ ? INADDR_LOOPBACK : INADDR_ANY);
 	server_addr.sin_port = htons(port);
 
 	SetPortReusePolicy(listenerSock_);

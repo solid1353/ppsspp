@@ -399,6 +399,7 @@ static constexpr ConfigSetting generalSettings[] = {
 	ConfigSetting("StateSlot", SETTING(g_Config, iCurrentStateSlot), 0, CfgFlag::PER_GAME),
 	ConfigSetting("EnableStateUndo", SETTING(g_Config, bEnableStateUndo), &DefaultEnableStateUndo, CfgFlag::PER_GAME)
 		.Label(I18NCat::SYSTEM, "Savestate slot backups"),
+	ConfigSetting("SaveStateGEDump", SETTING(g_Config, bSaveStateGEDump), true, CfgFlag::DEFAULT),
 	ConfigSetting("ConfirmLoadState", SETTING(g_Config, bConfirmLoadState), false, CfgFlag::DEFAULT)
 		.Label(I18NCat::SYSTEM, "Ask to confirm on load"),
 	ConfigSetting("StateLoadUndoGame", SETTING(g_Config, sStateLoadUndoGame), "NA", CfgFlag::DEFAULT),
@@ -1957,7 +1958,7 @@ bool Config::Save(const char *saveReason) {
 		return true;
 	}
 
-	if (!iniFilename_.empty() && g_Config.bSaveSettings) {
+	if (!iniFilename_.empty() && g_Config.bSaveSettings && !launchReadOnlySettings) {
 		if (IsGameSpecific()) {
 			// Save just the game-specific settings to the game-specific ini.
 			SaveGameConfig(gameId_, "");  // we don't pass a title, it was stored in the ini the first time.
@@ -2379,7 +2380,7 @@ bool Config::DeleteGameConfig(std::string_view gameId) {
 }
 
 bool Config::SaveGameConfig(const std::string &gameId, std::string_view titleForComment) {
-	if (gameId.empty()) {
+	if (gameId.empty() || launchReadOnlySettings) {
 		return false;
 	}
 

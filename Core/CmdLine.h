@@ -59,6 +59,9 @@ struct CommandLineOptions {
 	// Same, but without breaking at the entry point first.
 	std::optional<int> debuggerRunPort;
 
+	// Keep the debugger on this machine: no LAN access, and no report to report.ppsspp.org.
+	std::optional<bool> debuggerLocal;
+
 	// The port either of the two debugger options asked for, if any.
 	std::optional<int> DebuggerPort() const {
 		return debuggerPort.has_value() ? debuggerPort : debuggerRunPort;
@@ -98,6 +101,27 @@ struct CommandLineOptions {
 	std::optional<bool> mute;
 	// The window's position and size for this run: x, y, width, height. Not saved.
 	std::optional<std::array<int, 4>> window;
+	// Fit the window to the game and center it on its screen. Not saved.
+	std::optional<bool> centeredWindow;
+	// Start every boot and reset at alternate speed 1.
+	std::optional<bool> turbo;
+	// Start every boot and reset fast-forwarding, and stay there.
+	std::optional<bool> unlimited;
+	// Write no ini file in this run.
+	std::optional<bool> readOnlySettings;
+	// Use this directory as ms0:/PSP/SAVEDATA for this run.
+	std::optional<std::string> savedataDir;
+	// Report savedata writes and deletes as done without doing them.
+	std::optional<bool> discardSavedata;
+	// Run on a copy of the saves, dropped when the game stops or resets.
+	std::optional<bool> volatileSavedata;
+	// Replay this input recording from boot, or record one. See Core/InputRecording.h.
+	std::optional<std::string> inputRecording;
+	std::optional<std::string> inputRecordingCreate;
+	// Headless: capture at the replay's markers.
+	std::optional<std::string> inputRecordingCaptureDir;
+	std::optional<std::string> inputRecordingCaptureMode;
+	std::optional<std::string> inputRecordingCaptureMarkers;
 
 	// Headless: unpack the firmware inside an official updater EBOOT.PBP (given as the boot
 	// filename) into this directory, then exit without booting anything.

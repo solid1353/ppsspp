@@ -37,6 +37,8 @@
 #include "Core/FileSystems/MetaFileSystem.h"
 #include "Core/PSPLoaders.h"
 #include "Core/CoreTiming.h"
+#include "Core/AgentInput.h"
+#include "Core/InputRecording.h"
 #include "Core/Reporting.h"
 #include "Core/SaveState.h"
 #include "Core/System.h"
@@ -185,6 +187,8 @@ void __KernelInit()
 
 	kernelRunning = true;
 	g_GPOBits = 0;
+	AgentInput::OnBoot();
+	InputRecording::OnKernelInit();
 	INFO_LOG(Log::sceKernel, "Kernel initialized.");
 }
 

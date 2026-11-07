@@ -149,6 +149,10 @@ inline void System_RecreateActivity() {
 	g_requestManager.MakeSystemRequest(SystemRequestType::RECREATE_ACTIVITY, NO_REQUESTER_TOKEN, nullptr, nullptr, "", "", 0);
 }
 
+inline void System_RecenterWindow() {
+	g_requestManager.MakeSystemRequest(SystemRequestType::RECENTER_WINDOW, NO_REQUESTER_TOKEN, nullptr, nullptr, "", "", 0);
+}
+
 inline void System_ApplyFullscreenState() {
 	g_requestManager.MakeSystemRequest(SystemRequestType::APPLY_FULLSCREEN_STATE, NO_REQUESTER_TOKEN, nullptr, nullptr, "", "", 0);
 }

@@ -38,6 +38,7 @@
 #include "Core/HW/MemoryStick.h"
 #include "Core/MemMapHelpers.h"
 #include "Core/Config.h"
+#include "Core/Replay.h"
 #include "Core/Reporting.h"
 #include "Core/SaveState.h"
 
@@ -1269,6 +1270,10 @@ void PSPSaveDialog::StartIOThread() {
 
 // Takes the IO thread's results back. Without wait, only if it's done: returns whether it was.
 bool PSPSaveDialog::FinishIO(bool wait) {
+	// Host IO speed mustn't decide how many frames the dialog lasts, or a replay goes out of step.
+	if (ReplayIsExecuting() || ReplayIsSaving()) {
+		wait = true;
+	}
 	if (ioThreadStatus == SAVEIO_PENDING && !wait) {
 		return false;
 	}

@@ -921,6 +921,8 @@ SOURCES_CXX += \
 	       $(COREDIR)/MemMapFunctions.cpp \
 	       $(COREDIR)/PSPLoaders.cpp \
 	       $(COREDIR)/Replay.cpp \
+	       $(COREDIR)/InputRecording.cpp \
+	       $(COREDIR)/AgentInput.cpp \
 	       $(COREDIR)/Reporting.cpp \
 	       $(COREDIR)/RetroAchievements.cpp \
 	       $(COREDIR)/SaveState.cpp \

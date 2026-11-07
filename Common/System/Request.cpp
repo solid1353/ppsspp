@@ -32,6 +32,7 @@ const char *RequestTypeAsString(SystemRequestType type) {
 	case SystemRequestType::EXIT_APP: return "EXIT_APP";
 	case SystemRequestType::RESTART_APP: return "RESTART_APP";
 	case SystemRequestType::RECREATE_ACTIVITY: return "RECREATE_ACTIVITY";
+	case SystemRequestType::RECENTER_WINDOW: return "RECENTER_WINDOW";
 	case SystemRequestType::COPY_TO_CLIPBOARD: return "COPY_TO_CLIPBOARD";
 	case SystemRequestType::SHARE_TEXT: return "SHARE_TEXT";
 	case SystemRequestType::SHARE_FILE: return "SHARE_FILE";

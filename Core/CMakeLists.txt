@@ -178,6 +178,8 @@ if(NOT LIBRETRO)
 		Debugger/WebSocket/MemorySubscriber.h
 		Debugger/WebSocket/ReplaySubscriber.cpp
 		Debugger/WebSocket/ReplaySubscriber.h
+		Debugger/WebSocket/AgentSubscriber.cpp
+		Debugger/WebSocket/AgentSubscriber.h
 		Debugger/WebSocket/SteppingBroadcaster.cpp
 		Debugger/WebSocket/SteppingBroadcaster.h
 		Debugger/WebSocket/SteppingSubscriber.cpp
@@ -674,6 +676,10 @@ add_library(Core STATIC
 	Reporting.h
 	Replay.cpp
 	Replay.h
+	InputRecording.cpp
+	InputRecording.h
+	AgentInput.cpp
+	AgentInput.h
 	SaveState.cpp
 	SaveState.h
 	SaveStateRewind.cpp

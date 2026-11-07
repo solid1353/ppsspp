@@ -26,6 +26,8 @@
 #if !PPSSPP_PLATFORM(UWP)
 #include "Windows/W32Util/ShellUtil.h"
 #endif
+#else
+#include <unistd.h>
 #endif
 
 #include <mutex>
@@ -76,6 +78,7 @@
 #include "Core/Loaders.h"
 #include "Core/PSPLoaders.h"
 #include "Core/ELF/ParamSFO.h"
+#include "Core/InputRecording.h"
 #include "Core/SaveState.h"
 #include "Core/Util/RecentFiles.h"
 #include "Common/ExceptionHandlerSetup.h"
@@ -338,6 +341,51 @@ static void ShowCompatWarnings(const Compatibility &compat) {
 
 extern const std::string INDEX_FILENAME;
 
+// --volatile-savedata: the copy of the saves this boot runs on, deleted with it.
+static Path g_volatileSavedataDir;
+
+static bool CopyDirectoryContents(const Path &source, const Path &destination) {
+	std::vector<File::FileInfo> files;
+	File::GetFilesInDir(source, &files);
+	for (const File::FileInfo &file : files) {
+		const Path target = destination / file.name;
+		if (file.isDirectory) {
+			if (!File::CreateFullPath(target) || !CopyDirectoryContents(file.fullName, target)) {
+				return false;
+			}
+		} else if (!File::Copy(file.fullName, target)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool PrepareVolatileSavedata(std::string *errorString) {
+	if (!g_Config.launchVolatileSavedata) {
+		return true;
+	}
+	const Path source = g_Config.launchSavedataDir.empty() ? GetSysDirectory(DIRECTORY_SAVEDATA) : g_Config.launchSavedataDir;
+#ifdef _WIN32
+	const unsigned int processId = (unsigned int)GetCurrentProcessId();
+#else
+	const unsigned int processId = (unsigned int)getpid();
+#endif
+	g_volatileSavedataDir = GetSysDirectory(DIRECTORY_CACHE) / StringFromFormat("volatile_savedata_%u", processId);
+	File::DeleteDirRecursively(g_volatileSavedataDir);
+	if (!File::CreateFullPath(g_volatileSavedataDir) || !CopyDirectoryContents(source, g_volatileSavedataDir)) {
+		*errorString = "Failed to copy the saves for --volatile-savedata";
+		return false;
+	}
+	return true;
+}
+
+static void DeleteVolatileSavedata() {
+	if (!g_volatileSavedataDir.empty()) {
+		File::DeleteDirRecursively(g_volatileSavedataDir);
+		g_volatileSavedataDir.clear();
+	}
+}
+
 static void MountFileSystems() {
 	FileSystemFlags memstickFlags = FileSystemFlags::SIMULATE_FAT32 | FileSystemFlags::CARD;
 
@@ -349,6 +397,7 @@ static void MountFileSystems() {
 	}
 
 	auto memstickSystem = std::make_shared<DirectoryFileSystem>(&pspFileSystem, g_Config.memStickDirectory, memstickFlags);
+	memstickSystem->SetSavedataDir(g_volatileSavedataDir.empty() ? g_Config.launchSavedataDir : g_volatileSavedataDir);
 
 	pspFileSystem.Mount("ms0:", memstickSystem);
 	pspFileSystem.Mount("fatms0:", memstickSystem);
@@ -616,6 +665,9 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 	// rewrites the very directory flash0:/flash1: point at.
 	AutoInstallFirmwareFromDisc();
 
+	if (!PrepareVolatileSavedata(errorString)) {
+		return false;
+	}
 	MountFileSystems();
 
 	// The module availability checks need the mounted PSP filesystem and the firmware installed
@@ -725,6 +777,8 @@ void CPU_Shutdown(bool success) {
 		gpu->FlushPendingDrawing();
 	}
 
+	InputRecording::OnShutdown();
+
 	UninstallExceptionHandler();
 
 	GPURecord::Replay_Unload();
@@ -747,6 +801,7 @@ void CPU_Shutdown(bool success) {
 	DisplayHWShutdown();
 
 	pspFileSystem.Shutdown();  // This unmounts all filesystems.
+	DeleteVolatileSavedata();
 
 	// Everything the disassembly cache describes - emulated memory and the symbol map - is about
 	// to go away, so drop it here rather than leaving it to whichever debugger UI closes last.

@@ -52,6 +52,8 @@ struct DirectoryFileHandle {
 		: replay_(flags != SKIP_REPLAY), fileSystemFlags_(fileSystemFlags) {}
 
 	Path GetLocalPath(const Path &basePath, std::string_view localPath) const;
+	// Where PSP/SAVEDATA is served from, if not the memory stick (see SetSavedataDir).
+	Path savedataDir_;
 	bool Open(const Path &basePath, std::string &fileName, FileAccess access, u32 &err);
 	size_t Read(u8* pointer, s64 size);
 	size_t Write(const u8* pointer, s64 size);
@@ -65,6 +67,10 @@ public:
 	~DirectoryFileSystem();
 
 	void CloseAll();
+
+	// Serves PSP/SAVEDATA from this host directory instead (--savedata). Stays out of DoState: a
+	// savestate doesn't depend on where the saves live.
+	void SetSavedataDir(const Path &dir) { savedataDir_ = dir; }
 
 	void DoState(PointerWrap &p) override;
 	std::vector<PSPFileInfo> GetDirListing(std::string_view path, bool *exists = nullptr) override;
@@ -102,6 +108,7 @@ private:
 	typedef std::map<u32, OpenFileEntry> EntryMap;
 	EntryMap entries;
 	Path basePath;
+	Path savedataDir_;
 	IHandleAllocator *hAlloc;
 	FileSystemFlags flags;
 

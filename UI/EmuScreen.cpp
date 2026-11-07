@@ -75,6 +75,7 @@ using namespace std::placeholders;
 #include "Core/Debugger/SymbolMap.h"
 #include "Core/RetroAchievements.h"
 #include "Core/SaveState.h"
+#include "Core/Replay.h"
 #include "Core/Screenshot.h"
 #include "Core/HLE/__sceAudio.h"
 #include "Core/HW/Display.h"
@@ -532,6 +533,9 @@ void EmuScreen::dialogFinished(const Screen *dialog, DialogResult result) {
 void EmuScreen::focusChanged(ScreenFocusChange focusChange) {
 	Screen::focusChanged(focusChange);
 
+	// OnVKey drops what happens while another screen is on top, a key's release included.
+	frameAdvanceKeysHeld_ = 0;
+
 	std::string gameID = g_paramSFO.GetValueString("DISC_ID");
 	if (gameID.empty()) {
 		// startup or shutdown
@@ -984,17 +988,44 @@ void EmuScreen::ProcessVKey(VirtKey virtKey, bool down) {
 		break;
 
 	case VIRTKEY_FRAME_ADVANCE:
+	case VIRTKEY_FRAME_ADVANCE_DOUBLE:
 		if (down) {
-			// Can't do this reliably in an async fashion, so we just set a variable.
-			// Is this used by anyone? There's no user-friendly way to resume, other than PAUSE_NO_MENU or the debugger.
-			if (!NetworkWarnUserIfOnlineAndCantSpeed()) {
-				if (Core_IsStepping()) {
-					Core_Resume();
-					frameStep_ = true;
-				} else {
-					Core_Break(BreakReason::FrameAdvance);
-				}
-			}
+			PressFrameAdvance(virtKey == VIRTKEY_FRAME_ADVANCE_DOUBLE ? 2 : 1);
+		} else {
+			ReleaseFrameAdvance();
+		}
+		break;
+
+	case VIRTKEY_TURBO_TOGGLE:
+	case VIRTKEY_SLOW_MOTION_TOGGLE:
+		if (down && !NetworkWarnUserIfOnlineAndCantSpeed()) {
+			const FPSLimit limit = virtKey == VIRTKEY_TURBO_TOGGLE ? FPSLimit::CUSTOM1 : FPSLimit::CUSTOM2;
+			PSP_CoreParameter().fpsLimit = PSP_CoreParameter().fpsLimit == limit ? FPSLimit::NORMAL : limit;
+			ShowFpsLimitNotice();
+		}
+		break;
+
+	case VIRTKEY_UNLIMITED_TOGGLE:
+		if (down && !NetworkWarnUserIfOnlineAndCantSpeed() && !bootPending_) {
+			PSP_CoreParameter().fastForward = !PSP_CoreParameter().fastForward;
+		}
+		break;
+
+	case VIRTKEY_STOP_GAME:
+		if (down && !bootPending_) {
+			System_PostUIMessage(UIMessage::REQUEST_GAME_STOP);
+		}
+		break;
+
+	case VIRTKEY_RECENTER_WINDOW:
+		if (down) {
+			System_RecenterWindow();
+		}
+		break;
+
+	case VIRTKEY_INPUT_RECORDING_MARKER:
+		if (down) {
+			ReplayRequestMarker();
 		}
 		break;
 
@@ -1047,6 +1078,30 @@ void EmuScreen::ProcessVKey(VirtKey virtKey, bool down) {
 		if (down) {
 			if (!Achievements::WarnUserIfHardcoreModeActive(true) && !NetworkWarnUserIfOnlineAndCantSavestate() && !bootPending_) {
 				SaveState::SaveSlot(SaveState::GetGamePrefix(g_paramSFO), g_Config.iCurrentStateSlot, &ShowMessageAfterSaveStateAction);
+			}
+		}
+		break;
+	case VIRTKEY_SAVE_STATE_NEXT_SLOT:
+		if (down) {
+			if (!Achievements::WarnUserIfHardcoreModeActive(true) && !NetworkWarnUserIfOnlineAndCantSavestate() && !bootPending_) {
+				SaveState::SaveSlot(SaveState::GetGamePrefix(g_paramSFO), g_Config.iCurrentStateSlot, &ShowMessageAfterSaveStateAction);
+				SaveState::NextSlot();
+				System_PostUIMessage(UIMessage::SAVESTATE_DISPLAY_SLOT);
+			}
+		}
+		break;
+	case VIRTKEY_LOAD_UNDO_STATE:
+		if (down && !bootPending_) {
+			SaveState::LoadBackupSlot(SaveState::GetGamePrefix(g_paramSFO), g_Config.iCurrentStateSlot, &ShowMessageAfterSaveStateAction);
+		}
+		break;
+	case VIRTKEY_DELETE_STATE:
+		if (down && !bootPending_) {
+			const std::string prefix = SaveState::GetGamePrefix(g_paramSFO);
+			if (SaveState::HasSaveInSlot(prefix, g_Config.iCurrentStateSlot)) {
+				SaveState::DeleteSlot(prefix, g_Config.iCurrentStateSlot);
+				g_OSD.Show(OSDType::MESSAGE_INFO, sc->T("Savestate deleted"), 2.0, "savestatedeleted");
+				System_PostUIMessage(UIMessage::SAVESTATE_DISPLAY_SLOT);
 			}
 		}
 		break;
@@ -1131,6 +1186,52 @@ void EmuScreen::ProcessVKey(VirtKey virtKey, bool down) {
 	default:
 		break;
 	}
+}
+
+void EmuScreen::PressFrameAdvance(int frames) {
+	// Can't do this reliably in an async fashion, so we just set a variable.
+	if (NetworkWarnUserIfOnlineAndCantSpeed()) {
+		return;
+	}
+	if (frameAdvanceKeysHeld_++ == 0) {
+		frameAdvanceHoldStart_ = time_now_d();
+	}
+	frameAdvanceHeldFrames_ = frames;
+	if (Core_IsStepping()) {
+		frameStepsLeft_ = frames - 1;
+		Core_Resume();
+		frameStep_ = true;
+	} else {
+		Core_Break(BreakReason::FrameAdvance);
+	}
+}
+
+void EmuScreen::ReleaseFrameAdvance() {
+	if (frameAdvanceKeysHeld_ > 0) {
+		frameAdvanceKeysHeld_--;
+	}
+}
+
+void EmuScreen::ContinueFrameAdvance() {
+	constexpr double holdDelay = 0.3;
+	if (coreState != CORE_STEPPING_CPU || frameStep_) {
+		return;
+	}
+	// A frame step ends with no reason or this one. Anything else is a stop to respect.
+	const BreakReason reason = Core_BreakReason();
+	if (reason != BreakReason::None && reason != BreakReason::FrameAdvance) {
+		frameStepsLeft_ = 0;
+		return;
+	}
+	if (frameStepsLeft_ > 0) {
+		frameStepsLeft_--;
+	} else if (frameAdvanceKeysHeld_ > 0 && time_now_d() - frameAdvanceHoldStart_ >= holdDelay) {
+		frameStepsLeft_ = frameAdvanceHeldFrames_ - 1;
+	} else {
+		return;
+	}
+	Core_Resume();
+	frameStep_ = true;
 }
 
 void EmuScreen::OnVKeyAnalog(VirtKey virtualKeyCode, float value) {
@@ -1929,6 +2030,7 @@ ScreenRenderFlags EmuScreen::RunEmulation(bool skipBufferEffects) {
 			}
 		}
 
+		ContinueFrameAdvance();
 		PSP_RunLoopWhileState();
 
 		// Hopefully, after running, coreState is now CORE_NEXTFRAME

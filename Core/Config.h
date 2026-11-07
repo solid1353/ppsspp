@@ -387,6 +387,8 @@ public:
 	int iRewindSnapshotInterval;
 	bool bUISound;
 	bool bEnableStateUndo;
+	// Records the frame after a save as a GE dump beside the state.
+	bool bSaveStateGEDump;
 	bool bConfirmLoadState;
 	std::string sStateLoadUndoGame;
 	std::string sStateUndoLastSaveGame;
@@ -779,6 +781,25 @@ public:
 	int launchFastForwardFrames = 0;
 	// Silences game and UI audio (--mute).
 	bool launchMute = false;
+	// Start every boot and reset at alternate speed 1 (--turbo), or fast-forwarding (--unlimited).
+	bool launchTurbo = false;
+	bool launchUnlimited = false;
+	// Writes no ini file (--read-only-settings).
+	bool launchReadOnlySettings = false;
+	// Fits the window to the game and centers it on its screen (--centered-window).
+	bool launchCenteredWindow = false;
+	// The host directory behind ms0:/PSP/SAVEDATA (--savedata). Empty means the memory stick's own.
+	Path launchSavedataDir;
+	// Reports savedata writes and deletes as done without doing them (--discard-savedata).
+	bool launchDiscardSavedata = false;
+	// Runs on a copy of the saves, dropped when the game stops or resets (--volatile-savedata).
+	bool launchVolatileSavedata = false;
+	// See Core/InputRecording.h.
+	Path launchInputRecording;
+	Path launchInputRecordingCreate;
+	Path launchCaptureDir;
+	std::string launchCaptureMode;
+	std::string launchCaptureMarkers;
 
 	// Data for upgrade prompt
 	std::string sUpgradeMessage;  // The actual message from the server is currently not used, need a translation mechanism. So this just acts as a flag.

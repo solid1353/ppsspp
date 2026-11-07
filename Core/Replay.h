@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include "Common/File/Path.h"
@@ -26,6 +27,10 @@
 enum class ReplayAction : uint8_t {
 	BUTTONS = 0x00,
 	ANALOG = 0x01,
+	// A marker from the input recording hotkey.
+	MARKER = 0x02,
+	// When the recording stopped.
+	END = 0x03,
 
 	// All of these are just save results of memory stick operations, e.g. if mkdir succeeded, etc.
 	// We assume the game will generate the same data and syscalls.
@@ -54,8 +59,18 @@ bool ReplayExecuteFile(const Path &filename);
 // Returns whether there are unexecuted events to replay.
 bool ReplayHasMoreEvents();
 
+// Returns the time of the last event to replay, or 0 if there are none.
+uint64_t ReplayLastEventTime();
+
 // Begin recording.  If currently executing, discards unexecuted events.
 void ReplayBeginSave();
+// Adds a marker at the next input sample.  Ignored unless recording.
+void ReplayRequestMarker();
+// Records that the recording stops at this time.  Call before the last flush.
+void ReplayMarkEnd(uint64_t t);
+// Called on the CPU thread for each marker reached while executing, numbered from 1 in replay order.
+// Runs inside the input sample, so it must not call into sceCtrl.
+void ReplaySetMarkerHandler(std::function<void(int)> handler);
 // Flush buffered events to memory.  Continues recording (next call will receive new events only.)
 // No header is flushed with this operation - don't mix with ReplayFlushFile().
 void ReplayFlushBlob(std::vector<uint8_t> *data);
